@@ -18,7 +18,7 @@ import {
 	WellKnownHandleResolver
 } from '@atcute/identity-resolver';
 import { KVStore } from './kv-store';
-import { DOH_RESOLVER, REDIRECT_PATH } from '$lib/atproto/settings';
+import { DOH_RESOLVER, REDIRECT_PATH, SITE } from '$lib/atproto/settings';
 import { scope } from '$lib/atproto/metadata';
 import { dev } from '$app/environment';
 
@@ -76,7 +76,6 @@ export function createOAuthClient(env?: App.Platform['env']): OAuthClient {
 		throw new Error('CLIENT_ASSERTION_KEY secret is not set. Run: pnpm generate-key && npx wrangler secret put CLIENT_ASSERTION_KEY');
 	}
 	const key: ClientAssertionPrivateJwk = JSON.parse(env.CLIENT_ASSERTION_KEY);
-	const SITE = 'https://flo-bit.dev';
 
 	return new OAuthClient({
 		metadata: {
