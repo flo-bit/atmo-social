@@ -182,7 +182,7 @@ export async function getRecord({
 }
 
 /**
- * Creates or updates a record via the server API route.
+ * Creates or updates a record via remote function.
  */
 export async function putRecord({
 	collection,
@@ -195,21 +195,13 @@ export async function putRecord({
 }) {
 	if (!user.did) throw new Error('Not logged in');
 
-	const response = await fetch('/api/repo/putRecord', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ collection, rkey, record })
-	});
-
-	if (!response.ok) {
-		throw new Error('Failed to put record');
-	}
-
-	return { ok: true, data: await response.json() };
+	const { putRecord: putRecordRemote } = await import('./repo.remote');
+	const data = await putRecordRemote({ collection, rkey, record });
+	return { ok: true, data };
 }
 
 /**
- * Deletes a record via the server API route.
+ * Deletes a record via remote function.
  */
 export async function deleteRecord({
 	collection,
@@ -220,43 +212,19 @@ export async function deleteRecord({
 }) {
 	if (!user.did) throw new Error('Not logged in');
 
-	const response = await fetch('/api/repo/deleteRecord', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ collection, rkey })
-	});
-
-	if (!response.ok) {
-		throw new Error('Failed to delete record');
-	}
-
-	const data = (await response.json()) as { ok: boolean };
+	const { deleteRecord: deleteRecordRemote } = await import('./repo.remote');
+	const data = await deleteRecordRemote({ collection, rkey });
 	return data.ok;
 }
 
 /**
- * Uploads a blob via the server API route.
+ * Uploads a blob via remote function.
  */
 export async function uploadBlob({ blob }: { blob: Blob }) {
 	if (!user.did) throw new Error("Can't upload blob: Not logged in");
 
-	const response = await fetch('/api/repo/uploadBlob', {
-		method: 'POST',
-		body: blob
-	});
-
-	if (!response.ok) return;
-
-	const blobInfo = (await response.json()) as {
-		$type: 'blob';
-		ref: {
-			$link: string;
-		};
-		mimeType: string;
-		size: number;
-	};
-
-	return blobInfo;
+	const { uploadBlob: uploadBlobRemote } = await import('./repo.remote');
+	return await uploadBlobRemote({ blob });
 }
 
 /**
