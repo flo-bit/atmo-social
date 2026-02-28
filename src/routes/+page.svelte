@@ -13,7 +13,7 @@
 </script>
 
 <div class="mx-auto my-4 max-w-3xl px-4 md:my-32">
-	<h1 class="text-3xl font-bold">svelte atproto client oauth demo</h1>
+	<h1 class="text-3xl font-bold">svelte atproto cloudflare workers oauth demo</h1>
 
 	<a
 		href="https://github.com/flo-bit/svelte-atproto-client-oauth"
