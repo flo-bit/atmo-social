@@ -19,6 +19,15 @@
 	let { signUp = true, loginOnSelect = true }: { signUp?: boolean; loginOnSelect?: boolean } =
 		$props();
 
+	function extractErrorMessage(err: unknown): string {
+		const msg = err instanceof Error ? err.message : String(err);
+		try {
+			const parsed = JSON.parse(msg);
+			if (typeof parsed?.message === 'string') return parsed.message;
+		} catch {}
+		return msg;
+	}
+
 	let value = $state('');
 	let error: string | null = $state(null);
 	let loadingLogin = $state(false);
@@ -34,7 +43,7 @@
 		try {
 			await login(value as ActorIdentifier);
 		} catch (err) {
-			error = err instanceof Error ? err.message : String(err);
+			error = extractErrorMessage(err);
 		} finally {
 			loadingLogin = false;
 		}

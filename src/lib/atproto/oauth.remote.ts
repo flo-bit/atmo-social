@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { error } from '@sveltejs/kit';
 import { command, getRequestEvent } from '$app/server';
 import { createOAuthClient } from '$lib/server/oauth';
 import { scope } from '$lib/atproto/metadata';
@@ -12,19 +13,26 @@ export const oauthLogin = command(
 	}),
 	async (input) => {
 		const { platform } = getRequestEvent();
-		const oauth = createOAuthClient(platform?.env);
 
-		const target = input.signup
-			? ({ type: 'pds', serviceUrl: signUpPDS } as const)
-			: ({ type: 'account', identifier: input.handle as ActorIdentifier } as const);
+		try {
+			const oauth = createOAuthClient(platform?.env);
 
-		const { url } = await oauth.authorize({
-			target,
-			scope,
-			prompt: input.signup ? 'create' : undefined
-		});
+			const target = input.signup
+				? ({ type: 'pds', serviceUrl: signUpPDS } as const)
+				: ({ type: 'account', identifier: input.handle as ActorIdentifier } as const);
 
-		return { url: url.toString() };
+			const { url } = await oauth.authorize({
+				target,
+				scope,
+				prompt: input.signup ? 'create' : undefined
+			});
+
+			return { url: url.toString() };
+		} catch (e) {
+			if (e && typeof e === 'object' && 'status' in e) throw e; // re-throw SvelteKit errors
+			const message = e instanceof Error ? e.message : 'Login failed';
+			error(400, message);
+		}
 	}
 );
 
