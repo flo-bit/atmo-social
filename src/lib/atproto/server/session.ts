@@ -4,7 +4,7 @@ import type { Did } from '@atcute/lexicons';
 import type { OAuthSession } from '@atcute/oauth-node-client';
 import { createOAuthClient } from './oauth';
 import { getSignedCookie } from './signed-cookie';
-import { scope } from '../metadata';
+import { scopes } from '../settings';
 
 export type SessionLocals = {
 	session: OAuthSession | null;
@@ -29,7 +29,7 @@ export async function restoreSession(
 
 	// If permissions changed since login, invalidate the session
 	const savedScope = getSignedCookie(cookies, 'scope');
-	if (savedScope !== null && savedScope !== scope) {
+	if (savedScope !== null && savedScope !== scopes.join(' ')) {
 		cookies.delete('did', { path: '/' });
 		cookies.delete('scope', { path: '/' });
 		return { session: null, client: null, did: null };

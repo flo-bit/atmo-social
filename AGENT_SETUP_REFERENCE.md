@@ -21,6 +21,13 @@ Before making any changes, ask the user these questions:
 
 3. **Blobs**: Does the app need to upload blobs (images, video)? If yes, what types? (e.g. `image/*`, `video/*`)
 
+4. **Signup**: Should the app allow users to create new AT Protocol accounts (signup)?
+   - **`yes`** — Include a signup button/flow
+   - **`no`** — Login only, no account creation
+
+5. **Production PDS**: Which PDS should be used for signup in production? (default: `https://selfhosted.social/`)
+   - Only relevant if signup is enabled. Skip if signup is `no`.
+
 Use the answers to customize `settings.ts` (marked with `CUSTOMIZE` below) and choose which UI dependencies/files to create.
 
 ## Step 1: Install dependencies
@@ -44,45 +51,35 @@ Create all of the following files. These go into `src/lib/atproto/` and `src/rou
 
 ### `src/lib/atproto/settings.ts`
 
-Fill in `collections` and `blobs` from the user's answers. If no collections were specified, use an empty array.
+Fill in `collections` from the user's answers. If no collections were specified, use an empty array. Build `scopes` using `scope` builders from `@atcute/oauth-node-client` — add `scope.blob()`, `scope.rpc()`, etc. as needed.
 
 ```ts
 import { dev } from '$app/environment';
+import { scope } from '@atcute/oauth-node-client';
 
-type Permissions = {
-	collections: readonly string[];
-	rpc: Record<string, string | string[]>;
-	blobs: readonly string[];
-};
+// CUSTOMIZE: writable collections
+export const collections = [] as const;
 
-export const permissions = {
-	// CUSTOMIZE: add the user's collections
-	collections: [],
+export type AllowedCollection = (typeof collections)[number];
 
-	// CUSTOMIZE: add any authenticated RPC requests needed
-	rpc: {},
+// CUSTOMIZE: OAuth scope — add scope.blob({ accept: ['image/*'] }), scope.rpc(), etc. as needed
+export const scopes = ['atproto', scope.repo({ collection: [...collections] })];
 
-	// CUSTOMIZE: add blob types if the user needs uploads (e.g. ['image/*'])
-	blobs: []
-} as const satisfies Permissions;
+// CUSTOMIZE: set to true to allow signup, false for login-only
+export const ALLOW_SIGNUP = true;
 
-type ExtractCollectionBase<T extends string> = T extends `${infer Base}?${string}` ? Base : T;
-
-export type AllowedCollection = ExtractCollectionBase<(typeof permissions.collections)[number]>;
-
-// PDS to use for signup (change to preferred PDS)
+// CUSTOMIZE: PDS to use for signup (only relevant if ALLOW_SIGNUP is true)
 const devPDS = 'https://bsky.social/';
-const prodPDS = 'https://bsky.social/';
+const prodPDS = 'https://selfhosted.social/'; // CUSTOMIZE: change to preferred production PDS
 export const signUpPDS = dev ? devPDS : prodPDS;
 
 export const REDIRECT_PATH = '/oauth/callback';
 
+// redirect the user back to the page they were on before login
+export const REDIRECT_TO_LAST_PAGE_ON_LOGIN = true;
+
 export const DOH_RESOLVER = 'https://mozilla.cloudflare-dns.com/dns-query';
 ```
-
-### `src/lib/atproto/metadata.ts`
-
-<!-- FILE: src/lib/atproto/metadata.ts -->
 
 ### `src/lib/atproto/auth.svelte.ts`
 
@@ -234,7 +231,9 @@ If a load function already exists, merge the profile data into its return value.
 
 ### `src/routes/+layout.svelte` (foxui only)
 
-Only if the user chose `foxui`. Add the login modal to the existing layout:
+Only if the user chose `foxui`. Add the login modal to the existing layout.
+
+If signup is enabled (`ALLOW_SIGNUP = true`):
 
 ```svelte
 <script lang="ts">
@@ -250,6 +249,22 @@ Only if the user chose `foxui`. Add the login modal to the existing layout:
   }}
   signup={async () => {
     signup();
+    return true;
+  }}
+/>
+```
+
+If signup is disabled (`ALLOW_SIGNUP = false`), omit the `signup` prop:
+
+```svelte
+<script lang="ts">
+  import { AtprotoLoginModal } from '@foxui/social';
+  import { login } from '$lib/atproto';
+</script>
+
+<AtprotoLoginModal
+  login={async (handle) => {
+    await login(handle);
     return true;
   }}
 />

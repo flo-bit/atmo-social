@@ -1,26 +1,16 @@
 import { dev } from '$app/environment';
+import { scope } from '@atcute/oauth-node-client';
 
-type Permissions = {
-	collections: readonly string[];
-	rpc: Record<string, string | string[]>;
-	blobs: readonly string[];
-};
+// writable collections
+export const collections = ['xyz.statusphere.status'] as const;
 
-export const permissions = {
-	// collections you can create/delete/update
-	collections: ['xyz.statusphere.status'],
+export type AllowedCollection = (typeof collections)[number];
 
-	// what types of authenticated proxied requests you can make to services
-	rpc: {},
+// OAuth scope — add scope.blob(), scope.rpc(), etc. as needed
+export const scopes = ['atproto', scope.repo({ collection: [...collections] })];
 
-	// what types of blobs you can upload to a users PDS
-	blobs: []
-} as const satisfies Permissions;
-
-// Extract base collection name (before any query params)
-type ExtractCollectionBase<T extends string> = T extends `${infer Base}?${string}` ? Base : T;
-
-export type AllowedCollection = ExtractCollectionBase<(typeof permissions.collections)[number]>;
+// set to false to disable signup
+export const ALLOW_SIGNUP = true;
 
 // which PDS to use for signup (change to your preferred PDS)
 const devPDS = 'https://pds.rip/';

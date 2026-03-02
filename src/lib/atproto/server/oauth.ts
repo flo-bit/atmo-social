@@ -18,8 +18,7 @@ import {
 	WellKnownHandleResolver
 } from '@atcute/identity-resolver';
 import { KVStore } from './kv-store';
-import { DOH_RESOLVER, REDIRECT_PATH } from '../settings';
-import { scope } from '../metadata';
+import { DOH_RESOLVER, REDIRECT_PATH, scopes } from '../settings';
 import { dev } from '$app/environment';
 
 function createActorResolver() {
@@ -64,7 +63,7 @@ export function createOAuthClient(env?: App.Platform['env']): OAuthClient {
 		return new OAuthClient({
 			metadata: {
 				redirect_uris: [`http://127.0.0.1:5183${REDIRECT_PATH}`],
-				scope
+				scope: scopes
 			},
 			actorResolver,
 			stores
@@ -85,7 +84,7 @@ export function createOAuthClient(env?: App.Platform['env']): OAuthClient {
 		metadata: {
 			client_id: site + '/oauth-client-metadata.json',
 			redirect_uris: [site + REDIRECT_PATH],
-			scope,
+			scope: scopes,
 			jwks_uri: site + '/oauth/jwks.json'
 		},
 		keyset: [key],

@@ -21,6 +21,13 @@ Before making any changes, ask the user these questions:
 
 3. **Blobs**: Does the app need to upload blobs (images, video)? If yes, what types? (e.g. `image/*`, `video/*`)
 
+4. **Signup**: Should the app allow users to create new AT Protocol accounts (signup)?
+   - **`yes`** — Include a signup button/flow
+   - **`no`** — Login only, no account creation
+
+5. **Production PDS**: Which PDS should be used for signup in production? (default: `https://selfhosted.social/`)
+   - Only relevant if signup is enabled. Skip if signup is `no`.
+
 Use the answers to customize `settings.ts` (marked with `CUSTOMIZE` below) and choose which UI dependencies/files to create.
 
 ## Step 1: Install dependencies
@@ -44,69 +51,34 @@ Create all of the following files. These go into `src/lib/atproto/` and `src/rou
 
 ### `src/lib/atproto/settings.ts`
 
-Fill in `collections` and `blobs` from the user's answers. If no collections were specified, use an empty array.
+Fill in `collections` from the user's answers. If no collections were specified, use an empty array. Build `scopes` using `scope` builders from `@atcute/oauth-node-client` — add `scope.blob()`, `scope.rpc()`, etc. as needed.
 
 ```ts
 import { dev } from '$app/environment';
+import { scope } from '@atcute/oauth-node-client';
 
-type Permissions = {
-	collections: readonly string[];
-	rpc: Record<string, string | string[]>;
-	blobs: readonly string[];
-};
+// CUSTOMIZE: writable collections
+export const collections = [] as const;
 
-export const permissions = {
-	// CUSTOMIZE: add the user's collections
-	collections: [],
+export type AllowedCollection = (typeof collections)[number];
 
-	// CUSTOMIZE: add any authenticated RPC requests needed
-	rpc: {},
+// CUSTOMIZE: OAuth scope — add scope.blob({ accept: ['image/*'] }), scope.rpc(), etc. as needed
+export const scopes = ['atproto', scope.repo({ collection: [...collections] })];
 
-	// CUSTOMIZE: add blob types if the user needs uploads (e.g. ['image/*'])
-	blobs: []
-} as const satisfies Permissions;
+// CUSTOMIZE: set to true to allow signup, false for login-only
+export const ALLOW_SIGNUP = true;
 
-type ExtractCollectionBase<T extends string> = T extends `${infer Base}?${string}` ? Base : T;
-
-export type AllowedCollection = ExtractCollectionBase<(typeof permissions.collections)[number]>;
-
-// PDS to use for signup (change to preferred PDS)
+// CUSTOMIZE: PDS to use for signup (only relevant if ALLOW_SIGNUP is true)
 const devPDS = 'https://bsky.social/';
-const prodPDS = 'https://bsky.social/';
+const prodPDS = 'https://selfhosted.social/'; // CUSTOMIZE: change to preferred production PDS
 export const signUpPDS = dev ? devPDS : prodPDS;
 
 export const REDIRECT_PATH = '/oauth/callback';
 
+// redirect the user back to the page they were on before login
+export const REDIRECT_TO_LAST_PAGE_ON_LOGIN = true;
+
 export const DOH_RESOLVER = 'https://mozilla.cloudflare-dns.com/dns-query';
-```
-
-### `src/lib/atproto/metadata.ts`
-
-```ts
-import { permissions } from './settings';
-
-function constructScope() {
-	const parts: string[] = ['atproto'];
-
-	for (const collection of permissions.collections) {
-		parts.push('repo:' + collection);
-	}
-
-	for (const [key, value] of Object.entries(permissions.rpc ?? {})) {
-		const lxms = Array.isArray(value) ? value : [value];
-		for (const lxm of lxms) {
-			parts.push('rpc?lxm=' + lxm + '&aud=' + key);
-		}
-	}
-
-	if (permissions.blobs.length > 0) {
-		parts.push('blob?' + permissions.blobs.map((b) => 'accept=' + b).join('&'));
-	}
-
-	return parts.join(' ');
-}
-
-export const scope = constructScope();
 ```
 
 ### `src/lib/atproto/auth.svelte.ts`
@@ -115,6 +87,7 @@ export const scope = constructScope();
 import { AppBskyActorDefs } from '@atcute/bluesky';
 import type { ActorIdentifier, Did } from '@atcute/lexicons';
 import { page } from '$app/state';
+import { ALLOW_SIGNUP, REDIRECT_TO_LAST_PAGE_ON_LOGIN } from './settings';
 
 export const user = {
 	get profile() {
@@ -127,6 +100,12 @@ export const user = {
 		return (page.data?.did as Did | null) ?? null;
 	}
 };
+
+function saveReturnTo() {
+	if (REDIRECT_TO_LAST_PAGE_ON_LOGIN) {
+		document.cookie = `oauth_return_to=${encodeURIComponent(window.location.pathname + window.location.search)};path=/;max-age=600;samesite=lax`;
+	}
+}
 
 export async function login(handle: string) {
 	if (handle.startsWith('did:')) {
@@ -143,6 +122,7 @@ export async function login(handle: string) {
 
 	const { oauthLogin } = await import('./server/oauth.remote');
 	const { url } = await oauthLogin({ handle });
+	saveReturnTo();
 	window.location.assign(url);
 
 	// Wait for navigation (prevents UI flash)
@@ -154,8 +134,11 @@ export async function login(handle: string) {
 }
 
 export async function signup() {
+	if (!ALLOW_SIGNUP) throw new Error('Signup is not enabled');
+
 	const { oauthLogin } = await import('./server/oauth.remote');
 	const { url } = await oauthLogin({ signup: true });
+	saveReturnTo();
 	window.location.assign(url);
 
 	await new Promise((_resolve, reject) => {
@@ -677,8 +660,7 @@ import {
 	WellKnownHandleResolver
 } from '@atcute/identity-resolver';
 import { KVStore } from './kv-store';
-import { DOH_RESOLVER, REDIRECT_PATH } from '../settings';
-import { scope } from '../metadata';
+import { DOH_RESOLVER, REDIRECT_PATH, scopes } from '../settings';
 import { dev } from '$app/environment';
 
 function createActorResolver() {
@@ -723,7 +705,7 @@ export function createOAuthClient(env?: App.Platform['env']): OAuthClient {
 		return new OAuthClient({
 			metadata: {
 				redirect_uris: [`http://127.0.0.1:5183${REDIRECT_PATH}`],
-				scope
+				scope: scopes
 			},
 			actorResolver,
 			stores
@@ -744,7 +726,7 @@ export function createOAuthClient(env?: App.Platform['env']): OAuthClient {
 		metadata: {
 			client_id: site + '/oauth-client-metadata.json',
 			redirect_uris: [site + REDIRECT_PATH],
-			scope,
+			scope: scopes,
 			jwks_uri: site + '/oauth/jwks.json'
 		},
 		keyset: [key],
@@ -764,8 +746,7 @@ import { error } from '@sveltejs/kit';
 import { command, getRequestEvent } from '$app/server';
 import { createOAuthClient } from './oauth';
 import { getSignedCookie } from './signed-cookie';
-import { scope } from '../metadata';
-import { signUpPDS } from '../settings';
+import { scopes, signUpPDS } from '../settings';
 import type { ActorIdentifier, Did } from '@atcute/lexicons';
 
 export const oauthLogin = command(
@@ -785,7 +766,7 @@ export const oauthLogin = command(
 
 			const { url } = await oauth.authorize({
 				target,
-				scope,
+				scope: scopes.join(' '),
 				prompt: input.signup ? 'create' : undefined
 			});
 
@@ -812,6 +793,7 @@ export const oauthLogout = command(async () => {
 	}
 
 	cookies.delete('did', { path: '/' });
+	cookies.delete('scope', { path: '/' });
 
 	return { ok: true };
 });
@@ -823,16 +805,13 @@ export const oauthLogout = command(async () => {
 import { error } from '@sveltejs/kit';
 import { command, getRequestEvent } from '$app/server';
 import * as v from 'valibot';
-import { permissions } from '../settings';
+import { collections } from '../settings';
 
 // Validate collection format and check against allowed list from settings
 const collectionSchema = v.pipe(
 	v.string(),
 	v.regex(/^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*){2,}$/),
-	v.check(
-		(c) => permissions.collections.some((allowed) => c === allowed || allowed.startsWith(c + '?')),
-		'Collection not in allowed list'
-	)
+	v.check((c) => collections.includes(c as (typeof collections)[number]), 'Collection not in allowed list')
 );
 
 // AT Protocol rkey: TID, 'self', or other valid record keys (alphanumeric, dash, underscore, dot)
@@ -916,6 +895,7 @@ import type { Did } from '@atcute/lexicons';
 import type { OAuthSession } from '@atcute/oauth-node-client';
 import { createOAuthClient } from './oauth';
 import { getSignedCookie } from './signed-cookie';
+import { scopes } from '../settings';
 
 export type SessionLocals = {
 	session: OAuthSession | null;
@@ -938,6 +918,14 @@ export async function restoreSession(
 		return { session: null, client: null, did: null };
 	}
 
+	// If permissions changed since login, invalidate the session
+	const savedScope = getSignedCookie(cookies, 'scope');
+	if (savedScope !== null && savedScope !== scopes.join(' ')) {
+		cookies.delete('did', { path: '/' });
+		cookies.delete('scope', { path: '/' });
+		return { session: null, client: null, did: null };
+	}
+
 	try {
 		const oauth = createOAuthClient(env);
 		const session = await oauth.restore(did);
@@ -950,6 +938,7 @@ export async function restoreSession(
 	} catch (e) {
 		console.error('Failed to restore session:', e);
 		cookies.delete('did', { path: '/' });
+		cookies.delete('scope', { path: '/' });
 		return { session: null, client: null, did: null };
 	}
 }
@@ -1086,6 +1075,7 @@ console.log(`updated ${envPath}`);
 import { redirect } from '@sveltejs/kit';
 import { createOAuthClient } from '$lib/atproto/server/oauth';
 import { setSignedCookie } from '$lib/atproto/server/signed-cookie';
+import { scopes } from '$lib/atproto/settings';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
 
@@ -1097,16 +1087,28 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
 	try {
 		const { session } = await oauth.callback(url.searchParams);
 
-		setSignedCookie(cookies, 'did', session.did, {
+		const cookieOpts = {
 			path: '/',
 			httpOnly: true,
 			secure: !dev,
-			sameSite: 'lax',
+			sameSite: 'lax' as const,
 			maxAge: 60 * 60 * 24 * 180 // 180 days
-		});
+		};
+
+		setSignedCookie(cookies, 'did', session.did, cookieOpts);
+		setSignedCookie(cookies, 'scope', scopes.join(' '), cookieOpts);
 	} catch (e) {
 		console.error('OAuth callback failed:', e);
 		redirect(303, '/?error=auth_failed');
+	}
+
+	const returnTo = cookies.get('oauth_return_to');
+	if (returnTo) {
+		cookies.delete('oauth_return_to', { path: '/' });
+		const decoded = decodeURIComponent(returnTo);
+		if (decoded.startsWith('/') && !decoded.startsWith('//')) {
+			redirect(303, decoded);
+		}
 	}
 
 	redirect(303, '/');
@@ -1232,7 +1234,9 @@ If a load function already exists, merge the profile data into its return value.
 
 ### `src/routes/+layout.svelte` (foxui only)
 
-Only if the user chose `foxui`. Add the login modal to the existing layout:
+Only if the user chose `foxui`. Add the login modal to the existing layout.
+
+If signup is enabled (`ALLOW_SIGNUP = true`):
 
 ```svelte
 <script lang="ts">
@@ -1248,6 +1252,22 @@ Only if the user chose `foxui`. Add the login modal to the existing layout:
   }}
   signup={async () => {
     signup();
+    return true;
+  }}
+/>
+```
+
+If signup is disabled (`ALLOW_SIGNUP = false`), omit the `signup` prop:
+
+```svelte
+<script lang="ts">
+  import { AtprotoLoginModal } from '@foxui/social';
+  import { login } from '$lib/atproto';
+</script>
+
+<AtprotoLoginModal
+  login={async (handle) => {
+    await login(handle);
     return true;
   }}
 />

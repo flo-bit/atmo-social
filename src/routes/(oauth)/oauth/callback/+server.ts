@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import { createOAuthClient } from '$lib/atproto/server/oauth';
 import { setSignedCookie } from '$lib/atproto/server/signed-cookie';
-import { scope } from '$lib/atproto/metadata';
+import { scopes } from '$lib/atproto/settings';
 import { dev } from '$app/environment';
 import type { RequestHandler } from './$types';
 
@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ url, platform, cookies }) => {
 		};
 
 		setSignedCookie(cookies, 'did', session.did, cookieOpts);
-		setSignedCookie(cookies, 'scope', scope, cookieOpts);
+		setSignedCookie(cookies, 'scope', scopes.join(' '), cookieOpts);
 	} catch (e) {
 		console.error('OAuth callback failed:', e);
 		redirect(303, '/?error=auth_failed');
