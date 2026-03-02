@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
+import { DEV_PORT } from '../port';
 
 const cwd = process.cwd();
 const envPath = resolve(cwd, '.env');
@@ -147,7 +148,7 @@ function cleanup(): void {
 
 // ── main ─────────────────────────────────────────────────────────
 
-const child = spawn('cloudflared', ['tunnel', '--url', 'http://localhost:5183'], {
+const child = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${DEV_PORT}`], {
 	stdio: ['ignore', 'pipe', 'pipe']
 });
 

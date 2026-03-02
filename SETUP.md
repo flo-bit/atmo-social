@@ -270,7 +270,7 @@ To test the confidential client flow locally:
 
 1. `pnpm env:setup-dev`
 2. Add tunnel URL to `.env`: `OAUTH_PUBLIC_URL=https://your-tunnel.trycloudflare.com`
-3. `cloudflared tunnel --url http://localhost:5183`
+3. `pnpm tunnel`
 4. `pnpm dev`
 
 Without `OAUTH_PUBLIC_URL`, dev mode uses a loopback public client (no keys needed).

@@ -227,17 +227,57 @@ export async function deleteRecord({
 }
 
 /**
+ * Gets the dimensions of an image blob.
+ */
+function getImageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		const url = URL.createObjectURL(blob);
+		img.onload = () => {
+			URL.revokeObjectURL(url);
+			resolve({ width: img.naturalWidth, height: img.naturalHeight });
+		};
+		img.onerror = () => {
+			URL.revokeObjectURL(url);
+			reject(new Error('Failed to load image for dimensions'));
+		};
+		img.src = url;
+	});
+}
+
+/**
  * Uploads a blob via remote function.
  * Converts the Blob to a byte array for serialization across the remote boundary.
+ * For image blobs, automatically includes aspectRatio with width and height.
  */
-export async function uploadBlob({ blob }: { blob: Blob }) {
+export async function uploadBlob({
+	blob,
+	aspectRatio
+}: {
+	blob: Blob;
+	aspectRatio?: { width: number; height: number };
+}) {
 	if (!user.did) throw new Error("Can't upload blob: Not logged in");
+
+	// Auto-detect dimensions for image blobs if not provided
+	if (!aspectRatio && blob.type.startsWith('image/')) {
+		try {
+			aspectRatio = await getImageDimensions(blob);
+		} catch {
+			// Non-critical — proceed without aspectRatio
+		}
+	}
 
 	const arrayBuffer = await blob.arrayBuffer();
 	const bytes = Array.from(new Uint8Array(arrayBuffer));
 
 	const { uploadBlob: uploadBlobRemote } = await import('./server/repo.remote');
-	return await uploadBlobRemote({ bytes, mimeType: blob.type || 'application/octet-stream' });
+	const result = await uploadBlobRemote({ bytes, mimeType: blob.type || 'application/octet-stream' });
+
+	if (aspectRatio) {
+		return { ...result, aspectRatio };
+	}
+	return result;
 }
 
 /**

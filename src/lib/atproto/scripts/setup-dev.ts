@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomInt } from 'node:crypto';
 
 import { generateClientAssertionKey } from '@atcute/oauth-node-client';
 
@@ -45,3 +45,16 @@ vars = upsertVar(vars, 'CLIENT_ASSERTION_KEY', JSON.stringify(jwk));
 
 await writeFile(envPath, vars);
 console.log(`updated ${envPath}`);
+
+// Generate a random dev port (5200–7200) so multiple projects can run simultaneously
+const portPath = resolve(cwd, 'src/lib/atproto/port.ts');
+const portFile = await readFile(portPath, 'utf8');
+const currentPort = portFile.match(/DEV_PORT\s*=\s*(\d+)/);
+if (currentPort && parseInt(currentPort[1]) === 5183) {
+	const port = randomInt(5200, 7201);
+	const updated = portFile.replace(/DEV_PORT\s*=\s*\d+/, `DEV_PORT = ${port}`);
+	await writeFile(portPath, updated);
+	console.log(`set DEV_PORT to ${port} in port.ts`);
+} else {
+	console.log(`DEV_PORT already customized (${currentPort?.[1]}), skipping`);
+}

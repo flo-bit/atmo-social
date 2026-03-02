@@ -13,9 +13,9 @@ pnpm install
 pnpm dev
 ```
 
-That's it. In dev mode the app uses a loopback OAuth client — no keys, no Cloudflare setup, no secrets. It binds to `127.0.0.1:5183` (required for AT Protocol loopback OAuth).
+That's it. In dev mode the app uses a loopback OAuth client — no keys, no Cloudflare setup, no secrets. It binds to `127.0.0.1` on the port defined in `src/lib/atproto/port.ts` (required for AT Protocol loopback OAuth).
 
-Open http://127.0.0.1:5183 and log in with any Bluesky handle.
+Open the URL shown in the terminal and log in with any Bluesky handle.
 
 ## Configure your app
 
@@ -35,9 +35,11 @@ The OAuth scope is auto-generated from this config.
 
 ### 1. Create KV namespaces
 
+Prefix namespace names with your project name (the `name` field in `wrangler.jsonc`) so they're easy to identify when you have multiple projects on the same Cloudflare account:
+
 ```sh
-npx wrangler kv namespace create OAUTH_SESSIONS
-npx wrangler kv namespace create OAUTH_STATES
+npx wrangler kv namespace create <project-name>-OAUTH_SESSIONS
+npx wrangler kv namespace create <project-name>-OAUTH_STATES
 ```
 
 Each command outputs an ID. Put them in `wrangler.jsonc`:
@@ -82,8 +84,8 @@ Then add a custom domain in the Cloudflare dashboard (Worker > Settings > Domain
 To test the full confidential client flow locally using [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/):
 
 ```sh
-pnpm env:setup-dev                              # generates secrets in .env
-cloudflared tunnel --url http://localhost:5183   # start tunnel (note the URL it prints)
+pnpm env:setup-dev                              # generates secrets in .env + random port
+pnpm tunnel                                     # start tunnel (uses port from port.ts)
 ```
 
 Add the tunnel URL to `.env`:
@@ -103,7 +105,8 @@ Then `pnpm dev`. The app will use a confidential client with that URL.
 | `pnpm check` | Run svelte-check |
 | `pnpm env:generate-key` | Generate client assertion key |
 | `pnpm env:generate-secret` | Generate cookie signing secret |
-| `pnpm env:setup-dev` | Generate both secrets and write to `.env` |
+| `pnpm env:setup-dev` | Generate secrets, write to `.env`, assign random dev port |
+| `pnpm tunnel` | Start a Cloudflare tunnel for testing OAuth with a public URL |
 
 ## Optional: Profile caching
 

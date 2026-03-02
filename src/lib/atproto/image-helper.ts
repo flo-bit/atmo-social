@@ -114,9 +114,9 @@ export async function checkAndUploadImage(
 		}
 
 		const blob = await response.blob();
-		const compressedBlob = await compressImage(blob);
+		const { blob: compressed, aspectRatio } = await compressImage(blob);
 
-		recordWithImage[key] = await uploadBlob({ blob: compressedBlob.blob });
+		recordWithImage[key] = await uploadBlob({ blob: compressed, aspectRatio });
 
 		return;
 	}
@@ -125,8 +125,8 @@ export async function checkAndUploadImage(
 		if (recordWithImage[key].objectUrl) {
 			URL.revokeObjectURL(recordWithImage[key].objectUrl);
 		}
-		const compressedBlob = await compressImage(recordWithImage[key].blob);
-		recordWithImage[key] = await uploadBlob({ blob: compressedBlob.blob });
+		const { blob: compressed, aspectRatio } = await compressImage(recordWithImage[key].blob);
+		recordWithImage[key] = await uploadBlob({ blob: compressed, aspectRatio });
 	}
 }
 

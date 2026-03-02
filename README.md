@@ -13,7 +13,7 @@ pnpm install
 pnpm dev
 ```
 
-Dev mode uses a loopback OAuth client — no keys or Cloudflare setup needed. Open http://127.0.0.1:5183 and log in with any Bluesky handle.
+Dev mode uses a loopback OAuth client — no keys or Cloudflare setup needed. Open the URL shown in the terminal and log in with any Bluesky handle. (The port is randomized per project — see `src/lib/atproto/port.ts`.)
 
 See [GETTING_STARTED.md](GETTING_STARTED.md) for production deployment, tunnel setup, and configuration.
 
@@ -37,6 +37,7 @@ src/lib/atproto/
 ├── image-helper.ts         # Image compression + upload helpers
 ├── index.ts                # Public exports
 ├── methods.ts              # AT Protocol helpers (read/write/resolve)
+├── port.ts                 # Dev server port (randomized per project)
 ├── settings.ts             # Collections, scope, config constants
 ├── server/
 │   ├── oauth.ts            # OAuthClient factory (loopback vs confidential)
@@ -49,7 +50,8 @@ src/lib/atproto/
 └── scripts/
     ├── generate-key.ts
     ├── generate-secret.ts
-    └── setup-dev.ts
+    ├── setup-dev.ts
+    └── tunnel.ts
 
 src/routes/(oauth)/
 ├── oauth/callback/+server.ts

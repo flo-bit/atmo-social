@@ -8,16 +8,42 @@ The project must already use:
 - SvelteKit with `@sveltejs/adapter-cloudflare`
 - A `wrangler.jsonc` (or `wrangler.toml`) config
 
-## Step 0: Ask the user
+## Step 0: Understand the project and propose an integration approach
 
-Before making any changes, ask the user these questions:
+Before asking configuration questions, **explore the existing codebase** to understand what the app does. Read the main pages, components, state management, and data flow. Then propose to the user *how* AT Protocol should integrate with their app.
+
+### What to look for
+
+- **User data**: localStorage, cookies, IndexedDB, database calls, API state — anything per-user that could live on a PDS instead.
+- **Content creation**: Does the app let users create, edit, or save things? (posts, notes, drawings, settings, lists, bookmarks, etc.)
+- **Existing routes**: How is the app structured? Would user-specific public pages make sense?
+
+### Common integration patterns
+
+Based on what you find, suggest the relevant patterns to the user:
+
+1. **Replace localStorage/local data with PDS records** — If the app stores per-user data locally (localStorage, IndexedDB, cookies), store it as AT Protocol records on the user's PDS instead. The data becomes portable and accessible from any app that speaks AT Protocol. **Important: data on a PDS is public.** Make this very clear to the user — if the app currently stores private data locally, moving it to a PDS makes it visible to anyone. Only suggest this for data the user would be comfortable sharing publicly.
+
+2. **Add public `/{actor}` profile routes** — If each user produces content, add a route like `/{actor}` (where `actor` is a handle like `alice.bsky.social` or a DID) that displays that user's records. The logged-in user manages their own data from the main UI; anyone can view anyone else's public data by visiting their route. This is a natural fit when replacing localStorage — what was private per-device data becomes a public, shareable profile.
+
+3. **Social interactions** — Add likes, reposts, follows, or other social features using existing AT Protocol / Bluesky lexicons (`app.bsky.feed.like`, `app.bsky.graph.follow`, etc.).
+
+4. **Content publishing** — If the app produces content (posts, articles, images, media), publish to the user's PDS under a custom collection namespace.
+
+5. **Auth only** — Just add login/logout. The app doesn't read or write AT Protocol records — it only needs to know who the user is.
+
+Present your analysis and a concrete proposal (e.g. "I'd suggest replacing the localStorage todos with records in a `xyz.yourdomain.todo` collection, and adding a `/{actor}` route so users can share their list publicly"). **Wait for the user's response** before continuing to Step 1.
+
+## Step 1: Ask configuration questions
+
+Once the integration approach is agreed on, ask the user:
 
 1. **UI**: Should I add a login UI?
    - **`foxui`** — Use `@foxui/social` login modal (polished, recommended)
    - **`basic`** — Simple login/logout page at `/user` route (uses Tailwind if available)
    - **`none`** — Backend only, no UI (you'll build your own)
 
-2. **Collections**: What AT Protocol collections should your app write to? (e.g. `xyz.statusphere.status`, `app.bsky.feed.like`). Leave empty for read-only.
+2. **Collections**: What AT Protocol collections should your app write to? (e.g. `xyz.statusphere.status`, `app.bsky.feed.like`). Leave empty for read-only. (You should already have a suggestion from Step 0.)
 
 3. **Blobs**: Does the app need to upload blobs (images, video)? If yes, what types? (e.g. `image/*`, `video/*`)
 
@@ -30,7 +56,7 @@ Before making any changes, ask the user these questions:
 
 Use the answers to customize `settings.ts` (marked with `CUSTOMIZE` below) and choose which UI dependencies/files to create.
 
-## Step 1: Install dependencies
+## Step 2: Install dependencies
 
 Always install:
 
@@ -45,7 +71,7 @@ If UI choice is `foxui`:
 pnpm add @foxui/social @foxui/core
 ```
 
-## Step 2: Create files
+## Step 3: Create files
 
 ### Download all files
 
@@ -58,6 +84,7 @@ FILES=(
   "src/lib/atproto/auth.svelte.ts"
   "src/lib/atproto/methods.ts"
   "src/lib/atproto/image-helper.ts"
+  "src/lib/atproto/port.ts"
   "src/lib/atproto/index.ts"
   "src/lib/atproto/server/signed-cookie.ts"
   "src/lib/atproto/server/kv-store.ts"
@@ -69,6 +96,7 @@ FILES=(
   "src/lib/atproto/scripts/generate-key.ts"
   "src/lib/atproto/scripts/generate-secret.ts"
   "src/lib/atproto/scripts/setup-dev.ts"
+  "src/lib/atproto/scripts/tunnel.ts"
   "src/routes/(oauth)/oauth/callback/+server.ts"
   "src/routes/(oauth)/oauth/jwks.json/+server.ts"
   "src/routes/(oauth)/oauth-client-metadata.json/+server.ts"
@@ -114,7 +142,7 @@ export const REDIRECT_TO_LAST_PAGE_ON_LOGIN = true;
 export const DOH_RESOLVER = 'https://mozilla.cloudflare-dns.com/dns-query';
 ```
 
-## Step 3: Modify existing files
+## Step 4: Modify existing files
 
 ### `src/app.d.ts`
 
@@ -332,24 +360,43 @@ If `experimental` already exists, merge into it. Do not remove other experimenta
 
 ### `vite.config.ts`
 
-Add dev server config for loopback OAuth:
+Add the port import and dev server config for loopback OAuth:
+
+```ts
+import { DEV_PORT } from './src/lib/atproto/port';
+```
 
 ```ts
 server: {
   host: '127.0.0.1',
-  port: 5183
+  port: DEV_PORT
 }
 ```
 
-Add this inside `defineConfig()`. Do not remove existing plugins or config.
+Add these inside `defineConfig()`. Do not remove existing plugins or config.
 
 ### `wrangler.jsonc`
 
 Add or merge these fields:
 
+- Ensure `"main"` is set to the SvelteKit Cloudflare worker entrypoint:
+
+```jsonc
+"main": ".svelte-kit/cloudflare/_worker.js"
+```
+
+- Ensure `"assets"` is configured:
+
+```jsonc
+"assets": {
+  "binding": "ASSETS",
+  "directory": ".svelte-kit/cloudflare"
+}
+```
+
 - Add `"nodejs_compat_v2"` to `compatibility_flags` (create the array if it doesn't exist)
 - Do NOT add `OAUTH_PUBLIC_URL` to vars — it is only needed for production deployment and the user will set it themselves later. In dev mode without it, the app uses a loopback client automatically.
-- Add KV namespace placeholders to `kv_namespaces`:
+- Add KV namespace placeholders to `kv_namespaces`. Use the project name (from the `"name"` field in `wrangler.jsonc` or `package.json`) as a prefix so namespaces are distinguishable when multiple projects share the same Cloudflare account:
 
 ```jsonc
 { "binding": "OAUTH_SESSIONS", "id": "TODO" },
@@ -369,7 +416,8 @@ Add these to the `scripts` section:
 ```json
 "env:generate-key": "npx tsx src/lib/atproto/scripts/generate-key.ts",
 "env:generate-secret": "npx tsx src/lib/atproto/scripts/generate-secret.ts",
-"env:setup-dev": "npx tsx src/lib/atproto/scripts/setup-dev.ts"
+"env:setup-dev": "npx tsx src/lib/atproto/scripts/setup-dev.ts",
+"tunnel": "npx tsx src/lib/atproto/scripts/tunnel.ts"
 ```
 
 ### `.gitignore`
@@ -382,14 +430,30 @@ Ensure these lines are present:
 !.env.example
 ```
 
-## Step 4: Run setup and verify
+## Step 5: Run setup and verify
 
-1. Run `pnpm env:setup-dev` to generate secrets in `.env`
+1. Run `pnpm env:setup-dev` to generate secrets in `.env` and assign a random dev port (5200–7200) in `port.ts`
 2. Run `pnpm dev` to start the dev server
-3. Verify it starts on `http://127.0.0.1:5183`
+3. Verify it starts on `http://127.0.0.1:<DEV_PORT>` (the port from `port.ts`)
 4. Tell the user:
    - Dev mode uses a loopback client (no keys needed)
-   - For production: create KV namespaces with `npx wrangler kv namespace create OAUTH_SESSIONS` and `OAUTH_STATES`, update the IDs in `wrangler.jsonc`, set `OAUTH_PUBLIC_URL` to their domain, and run `npx wrangler secret put CLIENT_ASSERTION_KEY` / `COOKIE_SECRET` with values from `pnpm env:generate-key` / `pnpm env:generate-secret`
+   - For production: create KV namespaces prefixed with the project name — e.g. `npx wrangler kv namespace create <project-name>-OAUTH_SESSIONS` and `<project-name>-OAUTH_STATES` (use the `name` from `wrangler.jsonc`). Update the IDs in `wrangler.jsonc`, set `OAUTH_PUBLIC_URL` to their domain, and run `npx wrangler secret put CLIENT_ASSERTION_KEY` / `COOKIE_SECRET` with values from `pnpm env:generate-key` / `pnpm env:generate-secret`
+
+## Tunnel (for testing OAuth with a public URL)
+
+In dev mode, OAuth works via loopback (no public URL needed). But if you need to test with a real public URL (e.g. testing from another device, or testing production-like OAuth flows), use the tunnel command:
+
+```sh
+pnpm tunnel
+```
+
+This requires `cloudflared` to be installed. It:
+1. Spawns a Cloudflare Quick Tunnel pointing to `http://localhost:<DEV_PORT>`
+2. Sets `OAUTH_PUBLIC_URL` in `.env` to the tunnel URL
+3. Adds the tunnel hostname to `allowedHosts` in `vite.config.ts`
+4. Shows a persistent status bar with the tunnel URL
+
+After starting the tunnel, restart the dev server (`pnpm dev`) to pick up the new URL. When you stop the tunnel (Ctrl+C), it automatically cleans up `.env` and `vite.config.ts`.
 
 ## Usage examples
 
@@ -422,6 +486,48 @@ await putRecord({
 await deleteRecord({ collection: 'your.collection.name', rkey: 'some-key' });
 
 const blob = await uploadBlob({ blob: file });
+// For images, returns: { $type: 'blob', ref: { $link: string }, mimeType: string, size: number, aspectRatio: { width, height } }
+// aspectRatio is auto-detected for image/* blobs, or you can pass it explicitly:
+// await uploadBlob({ blob: file, aspectRatio: { width: 2000, height: 1144 } })
+
+// Store the blob reference in a record
+await putRecord({
+  collection: 'your.collection.name',
+  rkey: createTID(),
+  record: { image: blob, createdAt: new Date().toISOString() }
+});
+```
+
+### Displaying blobs
+
+```ts
+import { getBlobURL, getCDNImageBlobUrl } from '$lib/atproto';
+
+// Option 1: Direct PDS URL (works for any blob type)
+const url = await getBlobURL({ did: 'did:plc:...', blob: record.image });
+
+// Option 2: Bluesky CDN URL (faster, cached, image-only, returns WebP thumbnails)
+const cdnUrl = getCDNImageBlobUrl({ did: 'did:plc:...', blob: record.image });
+```
+
+### Image compression helper
+
+The `image-helper.ts` module provides utilities for working with image blobs:
+
+```ts
+import { compressImage, checkAndUploadImage, getImageFromRecord } from '$lib/atproto/image-helper';
+
+// Compress an image before uploading (default: max 900KB, max 2048px dimension, outputs WebP)
+const { blob: compressedBlob, aspectRatio } = await compressImage(file);
+const uploaded = await uploadBlob({ blob: compressedBlob });
+
+// Or use checkAndUploadImage to handle compression + upload in one step
+// Works with File objects, string URLs (with an image proxy), or already-uploaded blob refs
+const record = { image: someFileOrUrl };
+await checkAndUploadImage(record, 'image', '/api/image-proxy?url=');
+
+// Get a display URL from a record's blob field (handles blob refs, object URLs, and strings)
+const displayUrl = getImageFromRecord(record, did, 'image');
 ```
 
 ### Read operations (no auth needed)
