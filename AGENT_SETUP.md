@@ -47,9 +47,40 @@ pnpm add @foxui/social @foxui/core
 
 ## Step 2: Create files
 
-Fetch each file from the URL and write it to the specified path. All files go into `src/lib/atproto/` and `src/routes/(oauth)/`.
+### Download all files
 
-**Base URL:** `https://raw.githubusercontent.com/flo-bit/atproto-oauth-cloudflare/main/`
+Run this bash script to download all required files into the project:
+
+```sh
+BASE_URL="https://raw.githubusercontent.com/flo-bit/atproto-oauth-cloudflare/main"
+
+FILES=(
+  "src/lib/atproto/auth.svelte.ts"
+  "src/lib/atproto/methods.ts"
+  "src/lib/atproto/image-helper.ts"
+  "src/lib/atproto/index.ts"
+  "src/lib/atproto/server/signed-cookie.ts"
+  "src/lib/atproto/server/kv-store.ts"
+  "src/lib/atproto/server/oauth.ts"
+  "src/lib/atproto/server/oauth.remote.ts"
+  "src/lib/atproto/server/repo.remote.ts"
+  "src/lib/atproto/server/session.ts"
+  "src/lib/atproto/server/profile.ts"
+  "src/lib/atproto/scripts/generate-key.ts"
+  "src/lib/atproto/scripts/generate-secret.ts"
+  "src/lib/atproto/scripts/setup-dev.ts"
+  "src/routes/(oauth)/oauth/callback/+server.ts"
+  "src/routes/(oauth)/oauth/jwks.json/+server.ts"
+  "src/routes/(oauth)/oauth-client-metadata.json/+server.ts"
+  ".env.example"
+)
+
+for file in "${FILES[@]}"; do
+  mkdir -p "$(dirname "$file")"
+  curl -fsSL "$BASE_URL/$file" -o "$file"
+  echo "  downloaded $file"
+done
+```
 
 ### `src/lib/atproto/settings.ts`
 
@@ -82,31 +113,6 @@ export const REDIRECT_TO_LAST_PAGE_ON_LOGIN = true;
 
 export const DOH_RESOLVER = 'https://mozilla.cloudflare-dns.com/dns-query';
 ```
-
-### Files to fetch
-
-Fetch each file from `{BASE_URL}{path}` and write it to the same path in the project:
-
-| Path | Description |
-|------|-------------|
-| `src/lib/atproto/auth.svelte.ts` | Client-side login/signup/logout + user state |
-| `src/lib/atproto/methods.ts` | AT Protocol helpers (resolve, read records, write, etc.) |
-| `src/lib/atproto/image-helper.ts` | Image compression + upload helpers |
-| `src/lib/atproto/index.ts` | Re-exports (remove `signup` if `ALLOW_SIGNUP = false`) |
-| `src/lib/atproto/server/signed-cookie.ts` | HMAC-signed cookie helpers |
-| `src/lib/atproto/server/kv-store.ts` | KV-backed Store implementation |
-| `src/lib/atproto/server/oauth.ts` | OAuthClient factory (dev vs prod) |
-| `src/lib/atproto/server/oauth.remote.ts` | Login/logout remote functions |
-| `src/lib/atproto/server/repo.remote.ts` | putRecord/deleteRecord/uploadBlob remote functions |
-| `src/lib/atproto/server/session.ts` | Session restoration + scope invalidation |
-| `src/lib/atproto/server/profile.ts` | Profile loading with optional KV cache |
-| `src/lib/atproto/scripts/generate-key.ts` | Generate client assertion key |
-| `src/lib/atproto/scripts/generate-secret.ts` | Generate cookie secret |
-| `src/lib/atproto/scripts/setup-dev.ts` | Dev environment setup script |
-| `src/routes/(oauth)/oauth/callback/+server.ts` | OAuth callback handler |
-| `src/routes/(oauth)/oauth/jwks.json/+server.ts` | JWKS endpoint |
-| `src/routes/(oauth)/oauth-client-metadata.json/+server.ts` | Client metadata endpoint |
-| `.env.example` | Environment variable template |
 
 ## Step 3: Modify existing files
 

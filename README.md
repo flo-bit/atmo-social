@@ -1,6 +1,10 @@
+> **Work in progress** — APIs and file structure may change without notice.
+
 # svelte atproto cloudflare workers oauth
 
 SvelteKit + AT Protocol OAuth on Cloudflare Workers. Server-side OAuth with `@atcute/oauth-node-client`, Cloudflare KV for session/state storage, and SvelteKit remote functions for type-safe client-server communication.
+
+**Demo:** https://svelte-atproto-oauth-cloudflare-workers.flobit-dev.workers.dev/
 
 ## Quick Start
 
@@ -30,10 +34,10 @@ The [agent prompt](AGENT_SETUP.md) asks a few questions and sets everything up.
 ```
 src/lib/atproto/
 ├── auth.svelte.ts          # Client-side auth state & login/logout/signup
+├── image-helper.ts         # Image compression + upload helpers
 ├── index.ts                # Public exports
-├── metadata.ts             # OAuth scope from permissions
 ├── methods.ts              # AT Protocol helpers (read/write/resolve)
-├── settings.ts             # Permissions config, constants
+├── settings.ts             # Collections, scope, config constants
 ├── server/
 │   ├── oauth.ts            # OAuthClient factory (loopback vs confidential)
 │   ├── oauth.remote.ts     # Remote functions: login, logout
