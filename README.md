@@ -4,11 +4,13 @@
 
 ![screenshot](./screenshot.png)
 
+
+**Demo:** https://statusphere.atmo.tools
+
+
 svelte + cloudflare workers statusphere demo, built with lots of [`@atcute`](https://github.com/mary-ext/atcute) packages, [ufos.microcosm.blue](https://ufos.microcosm.blue/) (for recent status updates without its own backend), jetstream subscription for real-time updates and [@foxui](https://flo-bit.dev/ui-kit) for ui components.
 
 also doubles as a demo of `@atcute/oauth-node-client` for server-side oauth flows in cloudflare workers, with session storage in KV and HMAC-signed cookies and lots of useful functions.
-
-**Demo:** https://statusphere.atmo.tools
 
 ## Quick Start
 
