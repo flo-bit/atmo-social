@@ -1,187 +1,238 @@
 <script lang="ts">
-	import { flip } from 'svelte/animate';
-	import { scale } from 'svelte/transition';
-	import { onMount } from 'svelte';
-	import { SvelteSet } from 'svelte/reactivity';
-	import { user, logout } from '$lib/atproto';
-	import { Button } from '@foxui/core';
-	import { atProtoLoginModalState, GithubCorner, PopoverEmojiPicker } from '@foxui/social';
-	import { RelativeTime } from '@foxui/time';
-	import { JetstreamSubscription } from '@atcute/jetstream';
+	import { tick, onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
+	import type { Snapshot } from './$types';
+	import { user } from '$lib/atproto/auth.svelte';
+	import { blueskyPostToPostData } from '@foxui/social';
+	import { Post } from '@foxui/social';
+	import { Loader2 } from '@lucide/svelte';
+	import { loadFeed, likePost, unlikePost } from '$lib/atproto/server/feed.remote';
+	import { cachePost, prefetchThread } from '$lib/post-cache.svelte';
 
-	import { createTID, getDetailedProfile } from '$lib/atproto/methods';
-	import { putRecord } from '$lib/atproto/server/repo.remote';
-	import { emojiToNotoAnimatedWebp } from '$lib/emojis';
+	const LOGGED_IN_FEED = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
+	const PUBLIC_FEED = 'at://did:plc:w4xbfzo7kqfes5zb7r6qv3rw/app.bsky.feed.generator/blacksky-trend';
 
-	let { data } = $props();
+	let feedUri = $derived(user.did ? LOGGED_IN_FEED : PUBLIC_FEED);
 
-	let open = $state(false);
-	let localStatuses = $state<{ did: string; rkey: string; status: string; createdAt: string }[]>(
-		[]
-	);
-	let liveStatuses = $state<{ did: string; rkey: string; status: string; createdAt: string }[]>([]);
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let posts = $state<any[]>([]);
+	let cursor = $state<string | null>(null);
+	let loading = $state(true);
+	let loadingMore = $state(false);
 
-	// Deduplication set seeded from server data
-	// svelte-ignore state_referenced_locally
-	let seenKeys = new SvelteSet<string>(data.statuses.map((s) => `${s.did}-${s.rkey}`));
+	let pendingScrollTop = 0;
 
-	// Client-side profile cache seeded from server data
-	// svelte-ignore state_referenced_locally
-	let profiles = $state<Record<string, { handle: string; displayName?: string; avatar?: string }>>({
-		...data.profiles
-	});
-
-	async function fetchProfile(did: string) {
-		if (profiles[did]) return;
+	async function loadInitial() {
+		loading = true;
+		posts = [];
+		cursor = null;
 		try {
-			const profile = await getDetailedProfile({ did: did as import('@atcute/lexicons').Did });
-			if (!profile) return;
-			profiles[did] = {
-				handle: profile.handle,
-				displayName: profile.displayName,
-				avatar: profile.avatar
-			};
-		} catch {
-			// ignore fetch errors
+			const result = await loadFeed({ feedUri });
+			posts = JSON.parse(JSON.stringify(result.posts));
+			for (const fp of posts) {
+				if (fp.post) {
+					cachePost(fp.post);
+					prefetchThread(fp.post.uri);
+				}
+			}
+			cursor = result.cursor;
+		} catch (e) {
+			console.error('Failed to load feed:', e);
+		} finally {
+			loading = false;
 		}
 	}
 
-	let allStatuses = $derived([...localStatuses, ...liveStatuses, ...data.statuses]);
+	export const snapshot: Snapshot = {
+		capture: () => ({
+			posts,
+			cursor,
+			likeState,
+			likeCountDelta,
+			scrollY: window.scrollY
+		}),
+		restore: (snap) => {
+			posts = snap.posts;
+			cursor = snap.cursor;
+			likeState = snap.likeState;
+			likeCountDelta = snap.likeCountDelta;
+			loading = false;
+			pendingScrollTop = snap.scrollY;
+		}
+	};
 
-	// Jetstream subscription
-	onMount(() => {
-		const subscription = new JetstreamSubscription({
-			url: 'wss://jetstream1.us-east.bsky.network',
-			wantedCollections: ['xyz.statusphere.status']
-		});
+	onMount(async () => {
+		// Wait a tick to let snapshot restore run first
+		await new Promise((r) => setTimeout(r, 10));
+		if (posts.length > 0) {
+			// Restored from snapshot
+			for (const fp of posts) if (fp.post) cachePost(fp.post);
+			await tick();
+			window.scrollTo(0, pendingScrollTop);
+		} else {
+			loadInitial();
+		}
+	});
 
-		const iterator = subscription[Symbol.asyncIterator]();
-
-		(async () => {
-			try {
-				while (true) {
-					const { value: event, done } = await iterator.next();
-					if (done) break;
-
-					if (event.kind !== 'commit') continue;
-					if (event.commit.operation !== 'create') continue;
-
-					const { did } = event;
-					const { rkey, record } = event.commit as {
-						rkey: string;
-						record: { status: string; createdAt: string };
-					};
-					const key = `${did}-${rkey}`;
-
-					if (seenKeys.has(key)) continue;
-					seenKeys.add(key);
-
-					await fetchProfile(did);
-
-					liveStatuses = [
-						{ did, rkey, status: record.status, createdAt: record.createdAt },
-						...liveStatuses
-					];
+	async function loadMore() {
+		if (loadingMore || !cursor) return;
+		loadingMore = true;
+		try {
+			const result = await loadFeed({
+				feedUri,
+				cursor
+			});
+			const newPosts = JSON.parse(JSON.stringify(result.posts));
+			for (const fp of newPosts) {
+				if (fp.post) {
+					cachePost(fp.post);
+					prefetchThread(fp.post.uri);
 				}
-			} catch {
-				// subscription closed or errored
 			}
-		})();
+			posts = [...posts, ...newPosts];
+			cursor = result.cursor;
+		} catch (e) {
+			console.error('Failed to load more:', e);
+		} finally {
+			loadingMore = false;
+		}
+	}
 
-		return () => {
-			iterator.return!();
-		};
+	// Track like state: postUri -> likeRecordUri (or null if not liked)
+	let likeState = $state<Record<string, string | null>>({});
+	// Track like count adjustments: postUri -> delta (+1 or -1)
+	let likeCountDelta = $state<Record<string, number>>({});
+
+	function isLiked(postUri: string, viewerLike?: string): boolean {
+		if (postUri in likeState) return likeState[postUri] !== null;
+		return !!viewerLike;
+	}
+
+	function getLikeCount(postUri: string, originalCount: number): number {
+		return originalCount + (likeCountDelta[postUri] ?? 0);
+	}
+
+	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
+		const currentlyLiked = isLiked(postUri, viewerLike);
+		if (currentlyLiked) {
+			const likeUri = likeState[postUri] ?? viewerLike;
+			if (!likeUri) return;
+			likeState[postUri] = null;
+			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
+			try {
+				await unlikePost({ likeUri });
+			} catch {
+				likeState[postUri] = likeUri;
+				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
+			}
+		} else {
+			likeState[postUri] = 'pending';
+			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
+			try {
+				const result = await likePost({ uri: postUri, cid: postCid });
+				likeState[postUri] = result.uri;
+			} catch {
+				likeState[postUri] = null;
+				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
+			}
+		}
+	}
+
+	function handleScroll() {
+		if (loadingMore || !cursor) return;
+		const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+		if (scrollHeight - scrollTop - clientHeight < 800) {
+			loadMore();
+		}
+	}
+
+	onMount(() => window.addEventListener('scroll', handleScroll));
+	onDestroy(() => {
+		if (typeof window !== 'undefined') window.removeEventListener('scroll', handleScroll);
 	});
 </script>
 
-<div class="mx-auto max-w-xl px-4 my-16">
-	<h1 class="mb-4 text-3xl font-bold">svelte + cloudflare workers statusphere</h1>
-
-	<GithubCorner href="https://github.com/flo-bit/svelte-cloudflare-statusphere" />
-
-	{#if !user.isLoggedIn}
-		<Button class="my-4" size="lg" onclick={() => atProtoLoginModalState.show()}
-			>Login to post a status</Button
-		>
-	{:else}
-		<div class="my-8 flex items-center gap-2">
-			<PopoverEmojiPicker
-				onpicked={async (emoji) => {
-					const rkey = createTID();
-					const createdAt = new Date().toISOString();
-					const key = `${user.did!}-${rkey}`;
-					seenKeys.add(key);
-					localStatuses = [
-						{ did: user.did!, rkey, status: emoji.unicode, createdAt },
-						...localStatuses
-					];
-					open = false;
-					await putRecord({
-						rkey,
-						collection: 'xyz.statusphere.status',
-						record: {
-							status: emoji.unicode,
-							createdAt
-						}
-					});
-				}}
-				bind:open
-			>
-				{#snippet child({ props })}
-					<Button size="lg" {...props}>Post a status</Button>
-				{/snippet}
-			</PopoverEmojiPicker>
-			<Button variant="ghost" onclick={() => logout()}>Sign Out</Button>
-		</div>
-	{/if}
-
-	{#if allStatuses.length > 0}
-		<ul class="mt-4">
-			{#each allStatuses as status, i (`${status.did}-${status.rkey}`)}
-				{@const profile =
-					profiles[status.did] ??
-					(status.did === user.did && data.profile
-						? { displayName: data.profile.displayName, handle: data.profile.handle }
-						: null)}
-				{@const animated = emojiToNotoAnimatedWebp(status.status)}
-				<li class="flex items-center gap-3" animate:flip={{ duration: 300 }}>
-					<div class="flex flex-col items-center">
-						<div
-							class="bg-base-200 dark:bg-base-950/50 border-base-400/50 dark:border-base-800 flex h-12 w-12 items-center inset-shadow-xs inset-shadow-base-800/10 dark:inset-shadow-black/60 justify-center rounded-full border text-2xl"
-						>
-							{#if animated}
-								{#if i === 0}
-									<img in:scale={{ duration: 300 }} src={animated} alt={status.status} class="h-7 w-7" />
-								{:else}
-									<img src={animated} alt={status.status} class="h-7 w-7" />
-								{/if}
-							{:else if i === 0}
-								<span in:scale={{ duration: 300 }}>{status.status}</span>
-							{:else}
-								<span>{status.status}</span>
+<div class="flex h-dvh flex-col">
+	<div class="mx-auto w-full max-w-xl">
+		<!-- Post list -->
+		<div>
+			{#if loading}
+				<div class="flex items-center justify-center py-12">
+					<Loader2 class="text-base-400 animate-spin" size={28} />
+				</div>
+			{:else if posts.length === 0}
+					<div class="flex h-full items-center justify-center">
+						<p class="text-base-500 dark:text-base-400">No posts</p>
+					</div>
+				{:else}
+					<div class="divide-base-200 dark:divide-base-800 divide-y">
+						{#each posts as feedPost, i (feedPost.post?.uri ? `${feedPost.post.uri}-${i}` : i)}
+							{#if feedPost.post}
+								{@const { postData, embeds } = blueskyPostToPostData(feedPost.post, 'https://bsky.app', feedPost.reason, feedPost.reply)}
+								<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+							<div
+								class="px-4 py-4 cursor-pointer sm:px-0"
+								onclick={(e) => {
+									if ((e.target as HTMLElement).closest('a, button')) return;
+									// eslint-disable-next-line @typescript-eslint/no-explicit-any
+									const record = feedPost.post.record as any;
+									const isReply = !!record?.reply?.root;
+									if (isReply) {
+										const rootUri = record.reply.root.uri as string;
+										const [, , rootDid, , rootRkey] = rootUri.split('/');
+										const clickedRkey = feedPost.post.uri.split('/').pop();
+										goto(`/p/${rootDid}/post/${rootRkey}?highlight=${feedPost.post.author.handle}/${clickedRkey}`);
+									} else {
+										const rkey = feedPost.post.uri.split('/').pop();
+										goto(`/p/${feedPost.post.author.handle}/post/${rkey}`);
+									}
+								}}
+							>
+									<Post
+									compact={true}
+										data={postData}
+										{embeds}
+										onclickhandle={(handle) => goto(`/p/${handle}`)}
+										actions={user.did
+											? {
+													reply: {
+														count: postData.replyCount
+													},
+													repost: {
+														count: postData.repostCount
+													},
+													like: {
+														count: getLikeCount(feedPost.post.uri, postData.likeCount ?? 0),
+														active: isLiked(feedPost.post.uri, feedPost.post.viewer?.like),
+														onclick: () => handleLike(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.like)
+													}
+												}
+											: {
+													reply: {
+														count: postData.replyCount
+													},
+													repost: {
+														count: postData.repostCount
+													}
+												}}
+									/>
+								</div>
 							{/if}
+						{/each}
+					</div>
+
+					{#if loadingMore}
+						<div class="flex justify-center py-6">
+							<Loader2 class="text-base-400 animate-spin" size={24} />
 						</div>
-						{#if i < allStatuses.length - 1}
-							<div class="bg-base-400/50 dark:bg-base-800 min-h-3 w-px grow"></div>
-						{/if}
-					</div>
-					<div class="flex items-center gap-1.5 pb-3">
-						{#if profile}
-							<span class="text-accent-500 text-sm font-medium"
-								>{profile.displayName || profile.handle}</span
-							>
-						{:else}
-							<span class="text-base-400 dark:text-base-500 text-sm"
-								>{status.did.slice(0, 20)}...</span
-							>
-						{/if}
-						<span class="text-base-400 dark:text-base-500 text-sm">&middot;</span>
-						<span class="text-base-400 dark:text-base-500 text-sm">
-							<RelativeTime date={new Date(status.createdAt)} locale="en-US" />
-						</span>
-					</div>
-				</li>
-			{/each}
-		</ul>
-	{/if}
+					{/if}
+
+					{#if !cursor && posts.length > 0}
+						<p class="text-base-400 py-6 text-center text-sm">You've reached the end</p>
+					{/if}
+
+					<div class="pb-[max(0.75rem,env(safe-area-inset-bottom))]"></div>
+				{/if}
+		</div>
+	</div>
 </div>

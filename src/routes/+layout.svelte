@@ -1,26 +1,24 @@
 <script lang="ts">
 	import '../app.css';
-	import { AtprotoLoginModal } from '@foxui/social';
-	import { login, signup } from '$lib/atproto';
 	import { Head, ThemeToggle } from '@foxui/core';
-
+	import { House } from '@lucide/svelte';
+	import LoginModal from '$lib/LoginModal.svelte';
+	import Sidebar from '$lib/Sidebar.svelte';
 	let { children } = $props();
 </script>
 
-{@render children()}
+<Sidebar>
+	<a href="/" class="text-base-600 hover:bg-base-100 dark:text-base-400 dark:hover:bg-base-800 rounded-lg p-2 transition-colors">
+		<House size={20} />
+	</a>
+	<ThemeToggle class="mt-auto mb-2" />
+</Sidebar>
 
-<AtprotoLoginModal
-	login={async (handle) => {
-		await login(handle);
-		return true;
-	}}
-	signup={async () => {
-		signup();
-		return true;
-	}}
-/>
+<div class="lg:ml-20">
+	{@render children()}
+</div>
 
-<ThemeToggle class="absolute top-2 left-2" />
+<LoginModal />
 
 <Head
 	title="statusphere"

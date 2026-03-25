@@ -1,7 +1,7 @@
 import { parseResourceUri, type Did, type Handle } from '@atcute/lexicons';
 import { isDid } from '@atcute/lexicons/syntax';
 import { user } from './auth.svelte';
-import { DOH_RESOLVER, type AllowedCollection } from './settings';
+import { DOH_RESOLVER } from './settings';
 import {
 	CompositeDidDocumentResolver,
 	CompositeHandleResolver,
@@ -198,7 +198,7 @@ export async function putRecord({
 	rkey = 'self',
 	record
 }: {
-	collection: AllowedCollection;
+	collection: string;
 	rkey?: string;
 	record: Record<string, unknown>;
 }) {
@@ -212,13 +212,7 @@ export async function putRecord({
 /**
  * Deletes a record via remote function.
  */
-export async function deleteRecord({
-	collection,
-	rkey = 'self'
-}: {
-	collection: AllowedCollection;
-	rkey: string;
-}) {
+export async function deleteRecord({ collection, rkey = 'self' }: { collection: string; rkey: string }) {
 	if (!user.did) throw new Error('Not logged in');
 
 	const { deleteRecord: deleteRecordRemote } = await import('./server/repo.remote');
