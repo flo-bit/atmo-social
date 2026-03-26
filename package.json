@@ -59,6 +59,7 @@
 		"@foxui/text": "^0.8.2",
 		"@foxui/time": "^0.8.2",
 		"@lucide/svelte": "^1.7.0",
+		"@tailwindcss/typography": "^0.5.19",
 		"@use-gesture/vanilla": "^10.3.1",
 		"dexie": "^4.3.0",
 		"emoji-picker-element": "^1.29.1",

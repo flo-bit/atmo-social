@@ -37,7 +37,13 @@
 		return embedUrl.toString();
 	}
 
-	let embedSrc = $derived(buildEmbedUrl());
+	import { browser } from '$app/environment';
+	let embedSrc = $derived.by(() => {
+		if (!browser) return '';
+		const src = buildEmbedUrl();
+		console.log('[embed] src:', src, 'did:', user.did);
+		return src;
+	});
 
 	// Handle postMessage from the iframe
 	async function handleMessage(event: MessageEvent) {
@@ -112,7 +118,7 @@
 		src={embedSrc}
 		title="Embedded content from {config.domain}"
 		class="h-full w-full border-0"
-		sandbox="allow-scripts allow-same-origin"
+		sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
 		loading="lazy"
 	></iframe>
 </div>
