@@ -57,6 +57,57 @@ export const unlikePost = command(
 	}
 );
 
+export const followUser = command(
+	v.object({
+		did: v.string()
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+		if (!locals.client || !locals.did) error(401, 'Not authenticated');
+
+		const rkey = TID.now();
+		const res = await locals.client.post('com.atproto.repo.createRecord', {
+			input: {
+				repo: locals.did,
+				collection: 'app.bsky.graph.follow',
+				rkey,
+				record: {
+					$type: 'app.bsky.graph.follow',
+					subject: input.did,
+					createdAt: new Date().toISOString()
+				}
+			}
+		});
+
+		if (!res.ok) error(res.status, 'Failed to follow');
+		return { uri: res.data.uri };
+	}
+);
+
+export const unfollowUser = command(
+	v.object({
+		followUri: v.string()
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+		if (!locals.client || !locals.did) error(401, 'Not authenticated');
+
+		const parts = input.followUri.split('/');
+		const rkey = parts[parts.length - 1];
+
+		const res = await locals.client.post('com.atproto.repo.deleteRecord', {
+			input: {
+				repo: locals.did,
+				collection: 'app.bsky.graph.follow',
+				rkey
+			}
+		});
+
+		if (!res.ok) error(res.status, 'Failed to unfollow');
+		return { ok: true };
+	}
+);
+
 export const getPostThread = command(
 	v.object({
 		uri: v.string(),
@@ -106,6 +157,30 @@ export const getAuthorFeed = command(
 	}
 );
 
+export const searchPosts = command(
+	v.object({
+		q: v.string(),
+		cursor: v.optional(v.string())
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+
+		const client = locals.client ?? new Client({
+			handler: simpleFetchHandler({ service: 'https://public.api.bsky.app' })
+		});
+
+		const res = await client.get('app.bsky.feed.searchPosts', {
+			params: {
+				q: input.q,
+				limit: 25,
+				...(input.cursor ? { cursor: input.cursor } : {})
+			}
+		});
+		if (!res.ok) error(res.status, 'Failed to search posts');
+		return { posts: res.data.posts, cursor: res.data.cursor ?? null };
+	}
+);
+
 export const loadFeed = command(
 	v.object({
 		feedUri: v.string(),
@@ -127,5 +202,69 @@ export const loadFeed = command(
 		});
 		if (!res.ok) error(res.status, 'Failed to load feed');
 		return { posts: res.data.feed, cursor: res.data.cursor ?? null };
+	}
+);
+
+export const createBookmark = command(
+	v.object({
+		uri: v.string(),
+		cid: v.string()
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+		if (!locals.client || !locals.did) error(401, 'Not authenticated');
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const opts: any = { as: null, input: { uri: input.uri, cid: input.cid } };
+		const res = await locals.client.post('app.bsky.bookmark.createBookmark' as any, opts); // eslint-disable-line @typescript-eslint/no-explicit-any
+		if (!res.ok) error(res.status, 'Failed to bookmark');
+		return { ok: true };
+	}
+);
+
+export const deleteBookmark = command(
+	v.object({
+		uri: v.string()
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+		if (!locals.client || !locals.did) error(401, 'Not authenticated');
+
+		try {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const opts: any = { as: null, input: { uri: input.uri } };
+			await locals.client.post('app.bsky.bookmark.deleteBookmark' as any, opts); // eslint-disable-line @typescript-eslint/no-explicit-any
+		} catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+			console.error('[deleteBookmark] error:', e?.status, e?.body ?? e?.message ?? e);
+			error(e?.status ?? 500, 'Failed to remove bookmark');
+		}
+		return { ok: true };
+	}
+);
+
+export const getBookmarks = command(
+	v.object({
+		cursor: v.optional(v.string()),
+		limit: v.optional(v.number())
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+		if (!locals.client || !locals.did) error(401, 'Not authenticated');
+
+		const res = await locals.client.get('app.bsky.bookmark.getBookmarks' as any, { // eslint-disable-line @typescript-eslint/no-explicit-any
+			params: {
+				limit: input.limit ?? 30,
+				...(input.cursor ? { cursor: input.cursor } : {})
+			}
+		});
+
+		if (!res.ok) error(res.status, 'Failed to load bookmarks');
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const data = res.data as any;
+		// API returns [{ createdAt, subject, item: PostView }]
+		const raw = data.items ?? data.bookmarks ?? [];
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const posts = raw.map((entry: any) => entry.item ?? entry.post ?? entry);
+		return { posts, cursor: data.cursor ?? null };
 	}
 );

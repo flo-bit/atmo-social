@@ -39,7 +39,7 @@ export function wireEmbedClicks(
 				}
 			};
 			embed.record.onclickhandle = (handle) => navigateToProfile(handle);
-			embed.record.handleHref = (handle) => `/p/${handle}`;
+			embed.record.handleHref = (handle) => `/profile/${handle}`;
 		}
 	}
 	return embeds;

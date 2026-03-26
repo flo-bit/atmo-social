@@ -22,7 +22,7 @@ svelte bsky client, wip
 
 - make everything faster, faster, faster
 - add post creator
-- allow setting default feed
+- add keyboard bindings (e.g. j/k to navigate, enter to open post, r to reply, etc)
 
 ## posts
 
@@ -40,3 +40,8 @@ svelte bsky client, wip
 ## settings
 
 - allow setting theme (auto/dark/light) and theme colors (base and accent color)
+- allow setting default feed
+
+## bugs
+
+- fix feed flashing sometimes

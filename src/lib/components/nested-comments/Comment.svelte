@@ -39,7 +39,7 @@
 
 <div class="relative isolate min-w-0">
 	<button
-		class="group absolute top-0 left-0 flex h-full w-7 cursor-pointer items-center"
+		class="group absolute top-0 left-2 flex h-full w-3 z-10 cursor-pointer items-center"
 		onclick={() => (expanded = !expanded)}
 	>
 		<div
@@ -78,7 +78,7 @@
 	</div>
 
 	{#if comment.replies?.length && depth <= maxDepth && expanded}
-	<div class="pl-5">
+	<div class="pl-3.5">
 		{#each comment.replies.toSorted(sort) as reply (reply.id ?? reply.href ?? reply.createdAt + reply.author.handle)}
 			<Comment
 				comment={reply}

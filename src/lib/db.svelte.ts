@@ -21,6 +21,7 @@ interface CacheEntry {
 	key: string;
 	value: string; // JSON-serialized
 	expiresAt: number; // timestamp, 0 = no expiry
+	createdAt: number; // when the entry was written
 	accessedAt: number; // for LRU eviction
 }
 
@@ -43,7 +44,7 @@ class AppDatabase extends Dexie {
 
 	constructor() {
 		super('atmo-social');
-		this.version(1).stores({
+		this.version(2).stores({
 			identity: 'key, expiresAt, accessedAt',
 			profiles: 'key, expiresAt, accessedAt',
 			posts: 'key, expiresAt, accessedAt',
@@ -95,7 +96,7 @@ class CacheStore<T> {
 	}
 
 	/**
-	 * Returns the age of a cached entry in ms, or undefined if not cached.
+	 * Returns the age of a cached entry in ms (since it was written), or undefined if not cached/expired.
 	 */
 	async getAge(key: string): Promise<number | undefined> {
 		const now = Date.now();
@@ -105,7 +106,7 @@ class CacheStore<T> {
 				const entry = await table.get(key);
 				if (!entry) return undefined;
 				if (entry.expiresAt > 0 && entry.expiresAt < now) return undefined;
-				return now - entry.accessedAt;
+				return now - entry.createdAt;
 			}
 		} catch {
 			// fall through to memory
@@ -114,7 +115,7 @@ class CacheStore<T> {
 		const entry = mem.get(key);
 		if (!entry) return undefined;
 		if (entry.expiresAt > 0 && entry.expiresAt < now) return undefined;
-		return now - entry.accessedAt;
+		return now - entry.createdAt;
 	}
 
 	async get(key: string): Promise<T | undefined> {
@@ -154,6 +155,7 @@ class CacheStore<T> {
 			key,
 			value: JSON.stringify(value),
 			expiresAt: this.config.ttl ? now + this.config.ttl : 0,
+			createdAt: now,
 			accessedAt: now
 		};
 
@@ -179,6 +181,7 @@ class CacheStore<T> {
 			key,
 			value: JSON.stringify(value),
 			expiresAt: this.config.ttl ? now + this.config.ttl : 0,
+			createdAt: now,
 			accessedAt: now
 		}));
 

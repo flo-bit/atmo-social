@@ -12,6 +12,7 @@
 	import { getCachedPost, getCachedThread, getThreadAge } from '$lib/cache.svelte';
 	import { threadStore } from '$lib/db.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
+	import { bookmarks } from '$lib/bookmarks.svelte';
 
 	let loading = $state(true);
 	let loadingComments = $state(true);
@@ -99,7 +100,7 @@
 	onMount(async () => {
 
 		try {
-			const did = await actorToDid(page.params.actor);
+			const did = await actorToDid(page.params.handle);
 			const uri = `at://${did}/app.bsky.feed.post/${page.params.rkey}`;
 
 			// Show cached data instantly
@@ -152,7 +153,7 @@
 	});
 
 	function handleClickHandle(handle: string) {
-		goto(`/p/${handle}`);
+		goto(`/profile/${handle}`);
 	}
 </script>
 
@@ -177,9 +178,9 @@
 			<div class="px-4 sm:px-0">
 				<Post
 					data={postData}
-					embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/p/${handle}/post/${rkey}`), (handle) => goto(`/p/${handle}`))}
+					embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/profile/${handle}/post/${rkey}`), (handle) => goto(`/profile/${handle}`))}
 					onclickhandle={handleClickHandle}
-					handleHref={(handle) => `/p/${handle}`}
+					handleHref={(handle) => `/profile/${handle}`}
 					actions={user.did
 						? {
 								reply: { count: postData.replyCount },
@@ -188,6 +189,10 @@
 									count: getLikeCount(postView.uri, postData.likeCount ?? 0),
 									active: isLiked(postView.uri, postView.viewer?.like),
 									onclick: () => handleLike(postView.uri, postView.cid, postView.viewer?.like)
+								},
+								bookmark: {
+									active: bookmarks.isBookmarked(postView.uri, postView.viewer?.bookmarked),
+									onclick: () => bookmarks.toggle(postView.uri, postView.cid, postView.viewer?.bookmarked)
 								}
 							}
 						: {
@@ -198,15 +203,17 @@
 				/>
 			</div>
 
-			{#if loadingComments}
-				<div class="flex justify-center py-6">
-					<Loader2 class="text-base-400 animate-spin" size={24} />
-				</div>
-			{:else if comments.length > 0}
-				<div class="px-4 sm:px-0">
-					<NestedComments {comments} onclickhandle={handleClickHandle} actions={commentActions} />
-				</div>
-			{/if}
+			<div id="replies">
+				{#if loadingComments}
+					<div class="flex justify-center py-6">
+						<Loader2 class="text-base-400 animate-spin" size={24} />
+					</div>
+				{:else if comments.length > 0}
+					<div class="px-4 sm:px-0">
+						<NestedComments {comments} onclickhandle={handleClickHandle} actions={commentActions} />
+					</div>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </div>

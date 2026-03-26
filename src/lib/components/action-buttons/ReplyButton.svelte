@@ -36,7 +36,6 @@
 	<a
 		class="group/post-action inline-flex cursor-pointer items-center gap-1 text-xs"
 		{href}
-		target="_blank"
 	>
 		{@render icon()}
 	</a>

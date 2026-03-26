@@ -11,7 +11,7 @@
 			xmlns="http://www.w3.org/2000/svg"
 			viewBox="0 0 24 24"
 			fill="currentColor"
-			class="group-hover/post-action:bg-accent-500/10 text-accent-700 dark:text-accent-400 -m-1.5 size-7 rounded-full p-1.5 transition-all duration-100"
+			class="group-hover/post-action:bg-accent-500/10 text-accent-700 dark:text-accent-400 -m-1 size-6 rounded-full p-1 transition-all duration-100"
 		>
 			<path
 				fill-rule="evenodd"
@@ -26,7 +26,7 @@
 			viewBox="0 0 24 24"
 			stroke-width="1.5"
 			stroke="currentColor"
-			class="group-hover/post-action:bg-accent-500/10 group-hover/post-action:text-accent-700 dark:group-hover/post-action:text-accent-400 -m-1.5 size-7 rounded-full p-1.5 transition-all duration-100"
+			class="group-hover/post-action:bg-accent-500/10 group-hover/post-action:text-accent-700 dark:group-hover/post-action:text-accent-400 -m-1 size-6 rounded-full p-1 transition-all duration-100"
 		>
 			<path
 				stroke-linecap="round"
@@ -39,13 +39,13 @@
 
 {#if onclick}
 	<button
-		class="group/post-action inline-flex cursor-pointer items-center gap-2 text-sm"
+		class="group/post-action inline-flex cursor-pointer items-center gap-1 text-xs"
 		{onclick}
 	>
 		{@render icon()}
 	</button>
 {:else}
-	<span class="inline-flex items-center gap-2 text-sm">
+	<span class="inline-flex items-center gap-1 text-xs">
 		{@render icon()}
 	</span>
 {/if}

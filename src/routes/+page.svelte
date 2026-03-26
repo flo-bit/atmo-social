@@ -8,6 +8,7 @@
 	import { loadFeed, likePost, unlikePost } from '$lib/atproto/server/feed.remote';
 	import { cachePosts, prefetchThread, feedCache, prefetchNotifications, setFeedUri } from '$lib/cache.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
+	import { bookmarks } from '$lib/bookmarks.svelte';
 
 	const LOGGED_IN_FEED = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
 	const PUBLIC_FEED = 'at://did:plc:w4xbfzo7kqfes5zb7r6qv3rw/app.bsky.feed.generator/blacksky-trend';
@@ -157,10 +158,10 @@
 										const rootUri = record.reply.root.uri as string;
 										const [, , rootDid, , rootRkey] = rootUri.split('/');
 										const clickedRkey = feedPost.post.uri.split('/').pop();
-										return `/p/${rootDid}/post/${rootRkey}?highlight=${feedPost.post.author.handle}/${clickedRkey}`;
+										return `/profile/${rootDid}/post/${rootRkey}?highlight=${feedPost.post.author.handle}/${clickedRkey}`;
 									} else {
 										const rkey = feedPost.post.uri.split('/').pop();
-										return `/p/${feedPost.post.author.handle}/post/${rkey}`;
+										return `/profile/${feedPost.post.author.handle}/post/${rkey}`;
 									}
 								})()}
 								<div
@@ -169,14 +170,15 @@
 									<Post
 									compact={true}
 										data={postData}
-										embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/p/${handle}/post/${rkey}`), (handle) => goto(`/p/${handle}`))}
+										embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/profile/${handle}/post/${rkey}`), (handle) => goto(`/profile/${handle}`))}
 										href={postHref}
-										onclickhandle={(handle) => goto(`/p/${handle}`)}
-										handleHref={(handle) => `/p/${handle}`}
+										onclickhandle={(handle) => goto(`/profile/${handle}`)}
+										handleHref={(handle) => `/profile/${handle}`}
 										actions={user.did
 											? {
 													reply: {
-														count: postData.replyCount
+														count: postData.replyCount,
+														href: postHref + '#replies'
 													},
 													repost: {
 														count: postData.repostCount
@@ -185,11 +187,16 @@
 														count: getLikeCount(feedPost.post.uri, postData.likeCount ?? 0),
 														active: isLiked(feedPost.post.uri, feedPost.post.viewer?.like),
 														onclick: () => handleLike(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.like)
+													},
+													bookmark: {
+														active: bookmarks.isBookmarked(feedPost.post.uri, feedPost.post.viewer?.bookmarked),
+														onclick: () => bookmarks.toggle(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.bookmarked)
 													}
 												}
 											: {
 													reply: {
-														count: postData.replyCount
+														count: postData.replyCount,
+														href: postHref + '#replies'
 													},
 													repost: {
 														count: postData.repostCount

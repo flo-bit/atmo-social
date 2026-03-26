@@ -1,13 +1,14 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { Avatar, Button, cn, sanitize } from '@foxui/core';
 
-	let { profile, class: className }: { profile: {
+	let { profile, class: className, children }: { profile: {
 		banner?: string;
 		avatar?: string;
 		displayName?: string;
 		handle?: string;
 		description?: string;
-	}, class: string; } = $props();
+	}, class: string; children?: Snippet } = $props();
 </script>
 
 {#if profile}
@@ -52,6 +53,12 @@
 
 			<!-- <Button>Follow</Button> -->
 		</div>
+
+		{#if children}
+			<div class="px-4 sm:px-6 lg:px-8 pt-3">
+				{@render children()}
+			</div>
+		{/if}
 
 		<div class="px-4 sm:px-6 lg:px-8 py-4 text-xs sm:text-sm text-base-800 dark:text-base-200">
 			{@html sanitize(profile.description?.replaceAll('\n', '<br/>') ?? '')}

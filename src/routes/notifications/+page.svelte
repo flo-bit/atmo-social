@@ -166,7 +166,7 @@
 
 	function navigateToNotification(notif: Notification) {
 		if (notif.reason === 'follow') {
-			goto(`/p/${notif.author.handle}`);
+			goto(`/profile/${notif.author.handle}`);
 			return;
 		}
 
@@ -174,7 +174,7 @@
 		if (['reply', 'quote', 'mention'].includes(notif.reason)) {
 			const parts = notif.uri.split('/');
 			const rkey = parts[parts.length - 1];
-			goto(`/p/${notif.author.handle}/post/${rkey}`);
+			goto(`/profile/${notif.author.handle}/post/${rkey}`);
 			return;
 		}
 
@@ -184,7 +184,7 @@
 			const rkey = parts[parts.length - 1];
 			const did = parts[2];
 			// Use the profile handle from user since it's our own post
-			goto(`/p/${user.profile?.handle ?? did}/post/${rkey}`);
+			goto(`/profile/${user.profile?.handle ?? did}/post/${rkey}`);
 			return;
 		}
 	}
@@ -253,7 +253,7 @@
 										onmousedown={(e) => {
 											e.stopPropagation();
 											e.preventDefault();
-											goto(`/p/${notif.author.handle}`);
+											goto(`/profile/${notif.author.handle}`);
 										}}
 									>
 										<Avatar src={notif.author.avatar} class="size-8" />
@@ -267,7 +267,7 @@
 											onmousedown={(e) => {
 												e.stopPropagation();
 												e.preventDefault();
-												goto(`/p/${notif.author.handle}`);
+												goto(`/profile/${notif.author.handle}`);
 											}}
 										>
 											@{notif.author.handle}

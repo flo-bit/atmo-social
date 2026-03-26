@@ -182,11 +182,11 @@
 			<ArrowLeft size={20} />
 		</a>
 
-		<button onclick={() => goto(`/p/${member.handle}`)} class="cursor-pointer">
+		<button onclick={() => goto(`/profile/${member.handle}`)} class="cursor-pointer">
 			<Avatar src={member.avatar} class="size-8" />
 		</button>
 
-		<button onclick={() => goto(`/p/${member.handle}`)} class="cursor-pointer text-left">
+		<button onclick={() => goto(`/profile/${member.handle}`)} class="cursor-pointer text-left">
 			<p class="text-base-900 dark:text-base-100 text-sm font-medium">
 				{member.displayName ?? member.handle}
 			</p>
@@ -216,7 +216,7 @@
 				{#if isMessageView(msg)}
 					<div class="flex items-start gap-3 px-1 {showHeader ? 'mt-2 py-0.5' : 'py-0'}">
 						{#if showHeader}
-							<button class="shrink-0 cursor-pointer" onmousedown={() => goto(`/p/${isOwn ? (user.profile?.handle ?? user.did) : member.handle}`)}>
+							<button class="shrink-0 cursor-pointer" onmousedown={() => goto(`/profile/${isOwn ? (user.profile?.handle ?? user.did) : member.handle}`)}>
 								<Avatar src={isOwn ? user.profile?.avatar : member.avatar} class="mt-0.5 size-8" />
 							</button>
 						{:else}
@@ -225,7 +225,7 @@
 						<div class="min-w-0 flex-1">
 							{#if showHeader}
 								<div class="flex items-baseline gap-2">
-									<button class="cursor-pointer text-sm font-medium hover:underline {isOwn ? 'text-accent-500' : 'text-base-900 dark:text-base-100'}" onmousedown={() => goto(`/p/${isOwn ? (user.profile?.handle ?? user.did) : member.handle}`)}>
+									<button class="cursor-pointer text-sm font-medium hover:underline {isOwn ? 'text-accent-500' : 'text-base-900 dark:text-base-100'}" onmousedown={() => goto(`/profile/${isOwn ? (user.profile?.handle ?? user.did) : member.handle}`)}>
 										{isOwn ? (user.profile?.displayName ?? 'You') : (member.displayName ?? member.handle)}
 									</button>
 									<span class="text-base-400 text-[10px]">

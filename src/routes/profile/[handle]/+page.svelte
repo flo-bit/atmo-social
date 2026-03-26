@@ -9,11 +9,17 @@
 	import { user, logout } from '$lib/atproto/auth.svelte';
 	import { actorToDid, getDetailedProfile } from '$lib/atproto/methods';
 	import { getCachedProfile, cacheProfile, cachePosts, prefetchThread } from '$lib/cache.svelte';
-	import { getAuthorFeed, likePost, unlikePost } from '$lib/atproto/server/feed.remote';
+	import { getAuthorFeed, likePost, unlikePost, followUser, unfollowUser } from '$lib/atproto/server/feed.remote';
 	import { wireEmbedClicks } from '$lib/components/embed';
+	import { bookmarks } from '$lib/bookmarks.svelte';
 	import { Client, simpleFetchHandler } from '@atcute/client';
 
+	import { UserPlus, UserCheck } from '@lucide/svelte';
+
 	let isOwnProfile = $derived(user.did && profile?.did === user.did);
+	let followUri = $state<string | null>(null);
+	let isFollowing = $derived(followUri !== null);
+	let followLoading = $state(false);
 
 	let loading = $state(true);
 	let error = $state<string | null>(null);
@@ -66,6 +72,30 @@
 		}
 	}
 
+	async function toggleFollow() {
+		if (!profile?.did || followLoading) return;
+		followLoading = true;
+		try {
+			if (isFollowing) {
+				await unfollowUser({ followUri: followUri! });
+				followUri = null;
+			} else {
+				const result = await followUser({ did: profile.did });
+				followUri = result.uri;
+			}
+		} catch (e) {
+			console.error('Failed to toggle follow:', e);
+		} finally {
+			followLoading = false;
+		}
+	}
+
+	function numberToHuman(n: number): string {
+		if (n < 1000) return String(n);
+		if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+		return `${(n / 1_000_000).toFixed(1)}m`;
+	}
+
 	async function loadProfile(actor: string) {
 		loading = true;
 		error = null;
@@ -75,6 +105,7 @@
 		postsLoading = true;
 		likeState = {};
 		likeCountDelta = {};
+		followUri = null;
 
 		// Show cached profile instantly
 		const cached = await getCachedProfile(actor);
@@ -93,6 +124,7 @@
 			if (fresh) {
 				profile = fresh;
 				cacheProfile(fresh);
+				followUri = fresh.viewer?.following ?? null;
 			} else if (!cached) {
 				error = 'Profile not found';
 			}
@@ -120,7 +152,7 @@
 	}
 
 	$effect(() => {
-		const actor = page.params.actor;
+		const actor = page.params.handle;
 		if (actor) untrack(() => loadProfile(actor));
 	});
 
@@ -129,7 +161,7 @@
 		loadingMore = true;
 		try {
 			const result = await getAuthorFeed({
-				actor: page.params.actor,
+				actor: page.params.handle,
 				cursor: postsCursor
 			});
 			const newPosts = JSON.parse(JSON.stringify(result.posts));
@@ -180,15 +212,42 @@
 					description: profile.description
 				}}
 				class=""
-			/>
-			{#if isOwnProfile}
-				<div class="px-4 py-4">
-					<Button variant="ghost" onclick={logout} class="gap-2">
-						<LogOut size={16} />
-						Log out
-					</Button>
+			>
+				<div class="flex items-center justify-between">
+					<div class="flex gap-4 text-sm">
+						<button onclick={() => {}} class="hover:underline">
+							<span class="text-base-900 dark:text-base-100 font-semibold">{numberToHuman(profile.followsCount ?? 0)}</span>
+							<span class="text-base-500 dark:text-base-400"> following</span>
+						</button>
+						<button onclick={() => {}} class="hover:underline">
+							<span class="text-base-900 dark:text-base-100 font-semibold">{numberToHuman(profile.followersCount ?? 0)}</span>
+							<span class="text-base-500 dark:text-base-400"> followers</span>
+						</button>
+					</div>
+					{#if isOwnProfile}
+						<Button variant="ghost" onclick={logout} class="gap-2" size="sm">
+							<LogOut size={14} />
+							Log out
+						</Button>
+					{:else if user.did}
+						<Button
+							variant={isFollowing ? 'outline' : 'default'}
+							size="sm"
+							onclick={toggleFollow}
+							disabled={followLoading}
+							class="gap-1.5"
+						>
+							{#if isFollowing}
+								<UserCheck size={14} />
+								Following
+							{:else}
+								<UserPlus size={14} />
+								Follow
+							{/if}
+						</Button>
+					{/if}
 				</div>
-			{/if}
+			</UserProfile>
 
 			<!-- Author posts -->
 			{#if postsLoading}
@@ -202,7 +261,7 @@
 							{@const { postData, embeds } = blueskyPostToPostData(feedPost.post, 'https://bsky.app', feedPost.reason)}
 							{@const postHref = (() => {
 								const rkey = feedPost.post.uri.split('/').pop();
-								return `/p/${feedPost.post.author.handle}/post/${rkey}`;
+								return `/profile/${feedPost.post.author.handle}/post/${rkey}`;
 							})()}
 							<div
 								class="-mx-2 px-6 pt-3 pb-2 sm:px-2 rounded-xl hover:bg-base-100/50 dark:hover:bg-base-800/30 transition-colors"
@@ -210,10 +269,10 @@
 								<Post
 									compact={true}
 									data={postData}
-									embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/p/${handle}/post/${rkey}`), (handle) => goto(`/p/${handle}`))}
+									embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/profile/${handle}/post/${rkey}`), (handle) => goto(`/profile/${handle}`))}
 									href={postHref}
-									onclickhandle={(handle) => goto(`/p/${handle}`)}
-									handleHref={(handle) => `/p/${handle}`}
+									onclickhandle={(handle) => goto(`/profile/${handle}`)}
+									handleHref={(handle) => `/profile/${handle}`}
 									actions={user.did
 										? {
 												reply: { count: postData.replyCount },
@@ -222,6 +281,10 @@
 													count: getLikeCount(feedPost.post.uri, postData.likeCount ?? 0),
 													active: isLiked(feedPost.post.uri, feedPost.post.viewer?.like),
 													onclick: () => handleLike(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.like)
+												},
+												bookmark: {
+													active: bookmarks.isBookmarked(feedPost.post.uri, feedPost.post.viewer?.bookmarked),
+													onclick: () => bookmarks.toggle(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.bookmarked)
 												}
 											}
 										: {

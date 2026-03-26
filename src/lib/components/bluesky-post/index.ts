@@ -9,11 +9,11 @@ export type BlueskyHrefs = {
 	hashtag?: (tag: string) => string;
 };
 
-function defaultHrefs(baseUrl: string): Required<BlueskyHrefs> {
+function defaultHrefs(_baseUrl: string): Required<BlueskyHrefs> {
 	return {
-		profile: (handle, did) => `${baseUrl}/profile/${did ?? handle}`,
-		post: (handle, postId) => `${baseUrl}/profile/${handle}/post/${postId}`,
-		hashtag: (tag) => `${baseUrl}/hashtag/${tag}`
+		profile: (handle) => `/profile/${handle}`,
+		post: (handle, postId) => `/profile/${handle}/post/${postId}`,
+		hashtag: (tag) => `/hashtag/${tag}`
 	};
 }
 

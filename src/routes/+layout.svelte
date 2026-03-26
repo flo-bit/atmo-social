@@ -2,12 +2,13 @@
 	import '../app.css';
 	import { onMount, onDestroy } from 'svelte';
 	import { Head, ThemeToggle, Avatar, Button } from '@foxui/core';
-	import { House, MessageCircle, Bell } from '@lucide/svelte';
+	import { House, MessageCircle, Bell, Search, Bookmark } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/atproto/auth.svelte';
 	import { notificationsCache, startUnreadPoll, stopUnreadPoll, chatUnreadCount, startChatPoll, stopChatPoll, applyPendingFeed, startFeedPoll, stopFeedPoll, hydrateFromDb } from '$lib/cache.svelte';
 	import LoginModal, { loginModalState } from '$lib/LoginModal.svelte';
 	import ImageLightbox from '$lib/components/embed/ImageLightbox.svelte';
+	import ScrollToTop from '$lib/components/ScrollToTop.svelte';
 	import Sidebar from '$lib/Sidebar.svelte';
 	let { children } = $props();
 
@@ -31,6 +32,9 @@
 	<Button href="/" onmousedown={(e: MouseEvent) => { e.preventDefault(); applyPendingFeed(); window.scrollTo(0, 0); goto('/'); }} variant="ghost" size="icon">
 		<House size={20} />
 	</Button>
+	<Button href="/search" onmousedown={(e: MouseEvent) => { e.preventDefault(); goto('/search'); }} variant="ghost" size="icon">
+		<Search size={20} />
+	</Button>
 	<Button href="/chat" onmousedown={(e: MouseEvent) => { e.preventDefault(); goto('/chat'); }} variant="ghost" size="icon" class="relative">
 		<MessageCircle size={20} />
 		{#if chatUnreadCount.count > 0}
@@ -47,9 +51,14 @@
 			</span>
 		{/if}
 	</Button>
+	{#if user.did}
+		<Button href="/bookmarks" onmousedown={(e: MouseEvent) => { e.preventDefault(); goto('/bookmarks'); }} variant="ghost" size="icon">
+			<Bookmark size={20} />
+		</Button>
+	{/if}
 	<ThemeToggle class="mt-auto" />
 	{#if user.did}
-		{@const profileHref = `/p/${user.profile?.handle ?? user.did}`}
+		{@const profileHref = `/profile/${user.profile?.handle ?? user.did}`}
 		<Button href={profileHref} onmousedown={(e: MouseEvent) => { e.preventDefault(); goto(profileHref); }} variant="ghost" size="icon" class="mb-2">
 			<Avatar src={user.profile?.avatar} class="size-8" />
 		</Button>
@@ -66,6 +75,7 @@
 
 <LoginModal />
 <ImageLightbox />
+<ScrollToTop />
 
 <Head
 	title="atmo.social"
