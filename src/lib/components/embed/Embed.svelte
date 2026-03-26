@@ -21,7 +21,7 @@
 	{#if embed.type === 'images'}
 		<Images data={embed} {showSensitive} />
 	{:else if embed.type === 'external' && embed.external && specialEmbed}
-		<specialEmbed.component data={embed} />
+		<specialEmbed.component data={embed} config={specialEmbed.appConfig} />
 	{:else if embed.type === 'external' && embed.external}
 		<External data={embed} />
 	{:else if embed.type === 'video' && embed.video}

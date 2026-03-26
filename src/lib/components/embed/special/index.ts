@@ -2,11 +2,14 @@ import type { Component } from 'svelte';
 import type { EmbedExternalData } from '../types';
 import YouTubeEmbed from './YouTubeEmbed.svelte';
 import TenorEmbed from './TenorEmbed.svelte';
-import AtmoRsvpEmbed from './AtmoRsvpEmbed.svelte';
+import AppEmbed from './AppEmbed.svelte';
+import { findEmbedApp, type EmbedAppConfig } from './embed-registry';
 
 export type SpecialEmbed = {
 	match: (data: EmbedExternalData) => boolean;
-	component: Component<{ data: EmbedExternalData }>;
+	component: Component<{ data: EmbedExternalData; config?: EmbedAppConfig }>;
+	/** If set, this is an app embed with iframe + postMessage support */
+	appConfig?: EmbedAppConfig;
 };
 
 export const specialEmbeds: SpecialEmbed[] = [
@@ -23,14 +26,24 @@ export const specialEmbeds: SpecialEmbed[] = [
 		},
 		component: TenorEmbed
 	},
-	{
-		match: (data) => {
-			return /^https?:\/\/(www\.)?atmo\.rsvp\/p\//.test(data.external.href);
-		},
-		component: AtmoRsvpEmbed
-	}
 ];
 
 export function findSpecialEmbed(data: EmbedExternalData): SpecialEmbed | undefined {
-	return specialEmbeds.find((e) => e.match(data));
+	// Check hardcoded special embeds first
+	const special = specialEmbeds.find((e) => e.match(data));
+	if (special) return special;
+
+	// Check app embed registry
+	const appConfig = findEmbedApp(data.external.href);
+	if (appConfig) {
+		return {
+			match: () => true,
+			component: AppEmbed,
+			appConfig
+		};
+	}
+
+	return undefined;
 }
+
+export { findEmbedApp, type EmbedAppConfig } from './embed-registry';
