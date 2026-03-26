@@ -82,6 +82,30 @@ export const getPostThread = command(
 	}
 );
 
+export const getAuthorFeed = command(
+	v.object({
+		actor: v.string(),
+		cursor: v.optional(v.string())
+	}),
+	async (input) => {
+		const { locals } = getRequestEvent();
+
+		const client = locals.client ?? new Client({
+			handler: simpleFetchHandler({ service: 'https://public.api.bsky.app' })
+		});
+
+		const res = await client.get('app.bsky.feed.getAuthorFeed', {
+			params: {
+				actor: input.actor as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+				limit: 30,
+				...(input.cursor ? { cursor: input.cursor } : {})
+			}
+		});
+		if (!res.ok) error(res.status, 'Failed to load author feed');
+		return { posts: res.data.feed, cursor: res.data.cursor ?? null };
+	}
+);
+
 export const loadFeed = command(
 	v.object({
 		feedUri: v.string(),

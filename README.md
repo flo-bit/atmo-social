@@ -27,7 +27,6 @@ svelte bsky client, wip
 ## posts
 
 - show some link embeds as their own thing (e.g. youtube, tenor)
-- show fullscreen images on click
 - fix handles (space between avatar and handle sometimes)
 - make everything tighter
 - add action to reply button and repost/quote button

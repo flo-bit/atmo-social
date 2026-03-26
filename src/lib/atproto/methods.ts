@@ -26,9 +26,23 @@ export function parseUri(uri: string) {
 }
 
 /**
- * Resolves a handle to a DID using DNS and HTTP methods.
+ * Resolves a handle to a DID. Tries slingshot first (avoids CORS issues),
+ * then falls back to DNS + well-known.
  */
-export async function resolveHandle({ handle }: { handle: Handle }) {
+export async function resolveHandle({ handle }: { handle: Handle }): Promise<Did> {
+	// Try slingshot first
+	try {
+		const url = new URL('https://slingshot.microcosm.blue/xrpc/com.bad-example.identity.resolveMiniDoc');
+		url.searchParams.set('identifier', handle);
+		const res = await fetch(url);
+		if (res.ok) {
+			const data = await res.json();
+			if (data.did) return data.did as Did;
+		}
+	} catch {
+		// fall through to traditional resolver
+	}
+
 	const handleResolver = new CompositeHandleResolver({
 		methods: {
 			dns: new DohJsonHandleResolver({ dohUrl: DOH_RESOLVER }),
@@ -36,8 +50,7 @@ export async function resolveHandle({ handle }: { handle: Handle }) {
 		}
 	});
 
-	const data = await handleResolver.resolve(handle);
-	return data;
+	return await handleResolver.resolve(handle);
 }
 
 import { getDid } from '$lib/db.svelte';
