@@ -2,6 +2,7 @@ import type { Component } from 'svelte';
 import type { EmbedExternalData } from '../types';
 import YouTubeEmbed from './YouTubeEmbed.svelte';
 import TenorEmbed from './TenorEmbed.svelte';
+import AtmoRsvpEmbed from './AtmoRsvpEmbed.svelte';
 
 export type SpecialEmbed = {
 	match: (data: EmbedExternalData) => boolean;
@@ -21,6 +22,12 @@ export const specialEmbeds: SpecialEmbed[] = [
 			return /^https?:\/\/(www\.|media\.)?tenor\.com\//.test(data.external.href);
 		},
 		component: TenorEmbed
+	},
+	{
+		match: (data) => {
+			return /^https?:\/\/(www\.)?atmo\.rsvp\/p\//.test(data.external.href);
+		},
+		component: AtmoRsvpEmbed
 	}
 ];
 
