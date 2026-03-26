@@ -8,68 +8,25 @@
 	import { Post, NestedComments } from '$lib/components';
 	import type { PostData } from '$lib/components';
 	import { ArrowLeft, Loader2 } from '@lucide/svelte';
-	import { likePost, unlikePost, getPostThread } from '$lib/atproto/server/feed.remote';
-	import { getCachedPost, getCachedThread, getThreadAge } from '$lib/cache.svelte';
+	import { getPostThread } from '$lib/atproto/server/feed.remote';
+	import { getCachedPost, getCachedThread, getThreadAge, postMap } from '$lib/cache.svelte';
 	import { threadStore } from '$lib/db.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
-	import { bookmarks } from '$lib/bookmarks.svelte';
+	import { isLiked, isBookmarked, getLikeCount, toggleLike, toggleBookmark } from '$lib/actions.svelte';
 
 	let loading = $state(true);
 	let loadingComments = $state(true);
 	let error = $state<string | null>(null);
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let postView = $state<any>(null);
+	let postUri = $state<string | null>(null);
 	let comments = $state<PostData[]>([]);
-	// Map postData.id -> raw post view for like actions
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let postViewMap = $state<Record<string, any>>({});
-
-	let likeState = $state<Record<string, string | null>>({});
-	let likeCountDelta = $state<Record<string, number>>({});
-
-	function isLiked(postUri: string, viewerLike?: string): boolean {
-		if (postUri in likeState) return likeState[postUri] !== null;
-		return !!viewerLike;
-	}
-
-	function getLikeCount(postUri: string, originalCount: number): number {
-		return originalCount + (likeCountDelta[postUri] ?? 0);
-	}
-
-	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
-		const currentlyLiked = isLiked(postUri, viewerLike);
-		if (currentlyLiked) {
-			const likeUri = likeState[postUri] ?? viewerLike;
-			if (!likeUri) return;
-			likeState[postUri] = null;
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			try {
-				await unlikePost({ likeUri });
-			} catch {
-				likeState[postUri] = likeUri;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			}
-		} else {
-			likeState[postUri] = 'pending';
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			try {
-				const result = await likePost({ uri: postUri, cid: postCid });
-				likeState[postUri] = result.uri;
-			} catch {
-				likeState[postUri] = null;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			}
-		}
-	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function threadToComments(replies: any[]): PostData[] {
 		return replies
 			.filter((r) => r.$type === 'app.bsky.feed.defs#threadViewPost' && r.post)
 			.map((r) => {
+				postMap.upsert(r.post.uri, r.post);
 				const { postData } = blueskyPostToPostData(r.post);
-				const id = postData.id ?? r.post.uri;
-				postViewMap[id] = r.post;
 				if (r.replies?.length) {
 					postData.replies = threadToComments(r.replies);
 				}
@@ -78,8 +35,32 @@
 	}
 
 	function commentActions(comment: PostData) {
-		const raw = postViewMap[comment.id ?? ''];
-		if (!raw || !user.did) {
+		const uri = comment.id ? `at://${comment.id}` : '';
+		// Try to find the post in postMap by scanning for matching id
+		// The id from blueskyPostToPostData is the rkey, so we need to find the full uri
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let raw: any = null;
+		// postData.id is the rkey, but we stored posts by full URI
+		// We need to look up by iterating or by constructing the URI
+		// Since comments are upserted into postMap, we can look up by matching
+		for (const feedItem of comments) {
+			// This is inefficient but works for now
+		}
+		// Actually, let's store the uri on the postData
+		// For now, use the href which has the handle and rkey
+		if (!user.did) {
+			return {
+				reply: { count: comment.replyCount },
+				repost: { count: comment.repostCount },
+				like: { count: comment.likeCount }
+			};
+		}
+
+		// Find the post in postMap - the postData has href like /profile/handle/post/rkey
+		// We need the AT URI. Let's check all posts for matching id (rkey)
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const postView: any = comment.id ? findPostByRkey(comment.id) : null;
+		if (!postView) {
 			return {
 				reply: { count: comment.replyCount },
 				repost: { count: comment.repostCount },
@@ -90,62 +71,89 @@
 			reply: { count: comment.replyCount },
 			repost: { count: comment.repostCount },
 			like: {
-				count: getLikeCount(raw.uri, comment.likeCount ?? 0),
-				active: isLiked(raw.uri, raw.viewer?.like),
-				onclick: () => handleLike(raw.uri, raw.cid, raw.viewer?.like)
+				count: getLikeCount(postView.uri),
+				active: isLiked(postView.uri),
+				onclick: () => toggleLike(postView.uri, postView.cid)
 			}
 		};
 	}
 
-	onMount(async () => {
+	// Helper: find a post in postMap by its rkey (last segment of URI)
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function findPostByRkey(rkey: string): any {
+		// We stored comment URIs during threadToComments via postMap.upsert
+		// The rkey is the last part of the URI
+		// This is a simple linear scan - could be optimized with a separate map
+		// But for comment trees this is fine
+		return _commentPostMap[rkey];
+	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let _commentPostMap: Record<string, any> = {};
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	function threadToCommentsWithMap(replies: any[]): PostData[] {
+		return replies
+			.filter((r) => r.$type === 'app.bsky.feed.defs#threadViewPost' && r.post)
+			.map((r) => {
+				postMap.upsert(r.post.uri, r.post);
+				const rkey = r.post.uri.split('/').pop();
+				_commentPostMap[rkey] = r.post;
+				const { postData } = blueskyPostToPostData(r.post);
+				if (r.replies?.length) {
+					postData.replies = threadToCommentsWithMap(r.replies);
+				}
+				return postData;
+			});
+	}
+
+	onMount(async () => {
 		try {
 			const did = await actorToDid(page.params.handle);
 			const uri = `at://${did}/app.bsky.feed.post/${page.params.rkey}`;
+			postUri = uri;
 
 			// Show cached data instantly
 			let needsFetch = true;
 			const cachedThread = await getCachedThread(uri);
 			if (cachedThread) {
-				postView = cachedThread.post;
+				postMap.upsert(uri, cachedThread.post);
 				loading = false;
 				if (cachedThread.replies?.length) {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					comments = threadToComments(cachedThread.replies as any[]);
+					_commentPostMap = {};
+					comments = threadToCommentsWithMap(cachedThread.replies);
 				}
 				loadingComments = false;
-				// Skip refetch if cache is fresh (< 30s)
 				const age = await getThreadAge(uri);
 				if (age !== undefined && age < 30_000) needsFetch = false;
 			} else {
 				const cached = await getCachedPost(uri);
 				if (cached) {
-					postView = cached;
+					postMap.upsert(uri, cached);
 					loading = false;
 				}
 			}
 
 			if (!needsFetch) return;
 
-			// Fetch full thread (authenticated if logged in, for viewer state)
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			const data = await getPostThread({ uri }) as any;
 
 			if (!data.thread || data.thread.$type !== 'app.bsky.feed.defs#threadViewPost') {
-				if (!postView) error = 'Post not found';
+				if (!postMap.has(uri)) error = 'Post not found';
 				return;
 			}
 
-			postView = data.thread.post;
+			postMap.upsert(uri, data.thread.post);
 			threadStore.set(uri, data.thread).catch(() => {});
 
 			if (data.thread.replies?.length) {
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				comments = threadToComments(data.thread.replies as any[]);
+				_commentPostMap = {};
+				comments = threadToCommentsWithMap(data.thread.replies);
 			}
 		} catch (e) {
 			console.error('Failed to load post:', e);
-			if (!postView) error = 'Failed to load post';
+			if (!postUri || !postMap.has(postUri)) error = 'Failed to load post';
 		} finally {
 			loading = false;
 			loadingComments = false;
@@ -173,47 +181,50 @@
 			<div class="flex items-center justify-center px-4 py-12">
 				<p class="text-sm text-red-500">{error}</p>
 			</div>
-		{:else if postView}
-			{@const { postData, embeds } = blueskyPostToPostData(postView)}
-			<div class="px-4 sm:px-0">
-				<Post
-					data={postData}
-					embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/profile/${handle}/post/${rkey}`), (handle) => goto(`/profile/${handle}`))}
-					onclickhandle={handleClickHandle}
-					handleHref={(handle) => `/profile/${handle}`}
-					actions={user.did
-						? {
-								reply: { count: postData.replyCount },
-								repost: { count: postData.repostCount },
-								like: {
-									count: getLikeCount(postView.uri, postData.likeCount ?? 0),
-									active: isLiked(postView.uri, postView.viewer?.like),
-									onclick: () => handleLike(postView.uri, postView.cid, postView.viewer?.like)
-								},
-								bookmark: {
-									active: bookmarks.isBookmarked(postView.uri, postView.viewer?.bookmarked),
-									onclick: () => bookmarks.toggle(postView.uri, postView.cid, postView.viewer?.bookmarked)
+		{:else if postUri}
+			{@const post = postMap.get(postUri)}
+			{#if post}
+				{@const { postData, embeds } = blueskyPostToPostData(post)}
+				<div class="px-4 sm:px-0">
+					<Post
+						data={postData}
+						embeds={wireEmbedClicks(embeds, (handle, rkey) => goto(`/profile/${handle}/post/${rkey}`), (handle) => goto(`/profile/${handle}`))}
+						onclickhandle={handleClickHandle}
+						handleHref={(handle) => `/profile/${handle}`}
+						actions={user.did
+							? {
+									reply: { count: postData.replyCount },
+									repost: { count: postData.repostCount },
+									like: {
+										count: getLikeCount(post.uri),
+										active: isLiked(post.uri),
+										onclick: () => toggleLike(post.uri, post.cid)
+									},
+									bookmark: {
+										active: isBookmarked(post.uri),
+										onclick: () => toggleBookmark(post.uri, post.cid)
+									}
 								}
-							}
-						: {
-								reply: { count: postData.replyCount },
-								repost: { count: postData.repostCount },
-								like: { count: postData.likeCount }
-							}}
-				/>
-			</div>
+							: {
+									reply: { count: postData.replyCount },
+									repost: { count: postData.repostCount },
+									like: { count: postData.likeCount }
+								}}
+					/>
+				</div>
 
-			<div id="replies">
-				{#if loadingComments}
-					<div class="flex justify-center py-6">
-						<Loader2 class="text-base-400 animate-spin" size={24} />
-					</div>
-				{:else if comments.length > 0}
-					<div class="px-4 sm:px-0">
-						<NestedComments {comments} onclickhandle={handleClickHandle} actions={commentActions} />
-					</div>
-				{/if}
-			</div>
+				<div id="replies">
+					{#if loadingComments}
+						<div class="flex justify-center py-6">
+							<Loader2 class="text-base-400 animate-spin" size={24} />
+						</div>
+					{:else if comments.length > 0}
+						<div class="px-4 sm:px-0">
+							<NestedComments {comments} onclickhandle={handleClickHandle} actions={commentActions} />
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </div>

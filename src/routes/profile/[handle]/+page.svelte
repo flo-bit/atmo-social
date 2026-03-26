@@ -8,11 +8,12 @@
 	import { Loader2, LogOut } from '@lucide/svelte';
 	import { user, logout } from '$lib/atproto/auth.svelte';
 	import { actorToDid, getDetailedProfile } from '$lib/atproto/methods';
-	import { getCachedProfile, cacheProfile, cachePosts, prefetchThread } from '$lib/cache.svelte';
-	import { getAuthorFeed, likePost, unlikePost, followUser, unfollowUser } from '$lib/atproto/server/feed.remote';
+	import { getCachedProfile, cacheProfile, prefetchThread, ingestFeedPosts, postMap } from '$lib/cache.svelte';
+	import { getAuthorFeed, followUser, unfollowUser } from '$lib/atproto/server/feed.remote';
 	import { wireEmbedClicks } from '$lib/components/embed';
-	import { bookmarks } from '$lib/bookmarks.svelte';
+	import { isLiked, isBookmarked, getLikeCount, toggleLike, toggleBookmark } from '$lib/actions.svelte';
 	import { Client, simpleFetchHandler } from '@atcute/client';
+	import type { FeedItem } from '$lib/cache.svelte';
 
 	import { UserPlus, UserCheck } from '@lucide/svelte';
 
@@ -27,50 +28,10 @@
 	let profile = $state<any>(null);
 
 	// Posts state
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let posts = $state<any[]>([]);
+	let feedItems = $state<FeedItem[]>([]);
 	let postsCursor = $state<string | null>(null);
 	let postsLoading = $state(true);
 	let loadingMore = $state(false);
-
-	// Like state
-	let likeState = $state<Record<string, string | null>>({});
-	let likeCountDelta = $state<Record<string, number>>({});
-
-	function isLiked(postUri: string, viewerLike?: string): boolean {
-		if (postUri in likeState) return likeState[postUri] !== null;
-		return !!viewerLike;
-	}
-
-	function getLikeCount(postUri: string, originalCount: number): number {
-		return originalCount + (likeCountDelta[postUri] ?? 0);
-	}
-
-	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
-		const currentlyLiked = isLiked(postUri, viewerLike);
-		if (currentlyLiked) {
-			const likeUri = likeState[postUri] ?? viewerLike;
-			if (!likeUri) return;
-			likeState[postUri] = null;
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			try {
-				await unlikePost({ likeUri });
-			} catch {
-				likeState[postUri] = likeUri;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			}
-		} else {
-			likeState[postUri] = 'pending';
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			try {
-				const result = await likePost({ uri: postUri, cid: postCid });
-				likeState[postUri] = result.uri;
-			} catch {
-				likeState[postUri] = null;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			}
-		}
-	}
 
 	async function toggleFollow() {
 		if (!profile?.did || followLoading) return;
@@ -100,11 +61,9 @@
 		loading = true;
 		error = null;
 		profile = null;
-		posts = [];
+		feedItems = [];
 		postsCursor = null;
 		postsLoading = true;
-		likeState = {};
-		likeCountDelta = {};
 		followUri = null;
 
 		// Show cached profile instantly
@@ -138,11 +97,8 @@
 		// Load author posts
 		try {
 			const result = await getAuthorFeed({ actor });
-			posts = JSON.parse(JSON.stringify(result.posts));
-			cachePosts(posts);
-			for (const fp of posts) {
-				if (fp.post) prefetchThread(fp.post.uri);
-			}
+			feedItems = ingestFeedPosts(result.posts);
+			for (const item of feedItems) prefetchThread(item.uri);
 			postsCursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load author feed:', e);
@@ -164,12 +120,9 @@
 				actor: page.params.handle,
 				cursor: postsCursor
 			});
-			const newPosts = JSON.parse(JSON.stringify(result.posts));
-			cachePosts(newPosts);
-			for (const fp of newPosts) {
-				if (fp.post) prefetchThread(fp.post.uri);
-			}
-			posts = [...posts, ...newPosts];
+			const newItems = ingestFeedPosts(result.posts);
+			for (const item of newItems) prefetchThread(item.uri);
+			feedItems = [...feedItems, ...newItems];
 			postsCursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load more:', e);
@@ -254,15 +207,13 @@
 				<div class="flex items-center justify-center py-8">
 					<Loader2 class="text-base-400 animate-spin" size={24} />
 				</div>
-			{:else if posts.length > 0}
+			{:else if feedItems.length > 0}
 				<div>
-					{#each posts as feedPost, i (feedPost.post?.uri ? `${feedPost.post.uri}-${i}` : i)}
-						{#if feedPost.post}
-							{@const { postData, embeds } = blueskyPostToPostData(feedPost.post, 'https://bsky.app', feedPost.reason)}
-							{@const postHref = (() => {
-								const rkey = feedPost.post.uri.split('/').pop();
-								return `/profile/${feedPost.post.author.handle}/post/${rkey}`;
-							})()}
+					{#each feedItems as feedItem, i (feedItem.uri + '-' + i)}
+						{@const post = postMap.get(feedItem.uri)}
+						{#if post}
+							{@const { postData, embeds } = blueskyPostToPostData(post, 'https://bsky.app', feedItem.reason)}
+							{@const postHref = `/profile/${post.author.handle}/post/${post.uri.split('/').pop()}`}
 							<div
 								class="-mx-2 px-6 pt-3 pb-2 sm:px-2 rounded-xl hover:bg-base-100/50 dark:hover:bg-base-800/30 transition-colors"
 							>
@@ -278,13 +229,13 @@
 												reply: { count: postData.replyCount },
 												repost: { count: postData.repostCount },
 												like: {
-													count: getLikeCount(feedPost.post.uri, postData.likeCount ?? 0),
-													active: isLiked(feedPost.post.uri, feedPost.post.viewer?.like),
-													onclick: () => handleLike(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.like)
+													count: getLikeCount(post.uri),
+													active: isLiked(post.uri),
+													onclick: () => toggleLike(post.uri, post.cid)
 												},
 												bookmark: {
-													active: bookmarks.isBookmarked(feedPost.post.uri, feedPost.post.viewer?.bookmarked),
-													onclick: () => bookmarks.toggle(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.bookmarked)
+													active: isBookmarked(post.uri),
+													onclick: () => toggleBookmark(post.uri, post.cid)
 												}
 											}
 										: {
@@ -294,7 +245,7 @@
 											}}
 								/>
 							</div>
-							{#if i < posts.length - 1}
+							{#if i < feedItems.length - 1}
 								<hr class="border-base-200 dark:border-base-800 mx-4 sm:mx-0" />
 							{/if}
 						{/if}
@@ -307,7 +258,7 @@
 					</div>
 				{/if}
 
-				{#if !postsCursor && posts.length > 0}
+				{#if !postsCursor && feedItems.length > 0}
 					<p class="text-base-400 py-6 text-center text-sm">You've reached the end</p>
 				{/if}
 			{:else}

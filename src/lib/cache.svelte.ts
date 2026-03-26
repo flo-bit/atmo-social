@@ -20,12 +20,46 @@ import {
 	cachePosts,
 	cacheProfile
 } from '$lib/db.svelte';
+import { postMap } from '$lib/postStore.svelte';
 
 type ConvoView = ChatBskyConvoDefs.ConvoView;
 type Notification = AppBskyNotificationListNotifications.Notification;
 
 // Re-export db helpers so existing imports still work
 export { cachePost, cachePosts, cacheProfile };
+// Re-export postMap for convenience
+export { postMap };
+
+// Feed item: stores URI + feed-specific metadata, post data lives in postMap
+export interface FeedItem {
+	uri: string;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	reason?: any;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	reply?: any;
+}
+
+// Extract FeedItems from API response and populate postMap
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ingestFeedPosts(feedPosts: any[]): FeedItem[] {
+	postMap.upsertMany(feedPosts);
+	cachePosts(feedPosts);
+	return feedPosts
+		.filter((fp: any) => fp.post?.uri) // eslint-disable-line @typescript-eslint/no-explicit-any
+		.map((fp: any) => ({ // eslint-disable-line @typescript-eslint/no-explicit-any
+			uri: fp.post.uri,
+			reason: fp.reason,
+			reply: fp.reply
+		}));
+}
+
+// Ingest standalone PostView[] (bookmarks, search results)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ingestPosts(posts: any[]): string[] {
+	postMap.upsertMany(posts);
+	cachePosts(posts);
+	return posts.filter((p: any) => p?.uri).map((p: any) => p.uri); // eslint-disable-line @typescript-eslint/no-explicit-any
+}
 
 // ---------------------------------------------------------------------------
 // State persistence helpers
@@ -65,17 +99,37 @@ export async function getThreadAge(uri: string): Promise<number | undefined> {
 
 export function prefetchThread(uri: string) {
 	threadStore.get(uri).then((cached) => {
-		if (cached) return;
+		if (cached) {
+			// Hydrate postMap from cached thread
+			_hydrateThreadPosts(cached);
+			return;
+		}
 		getPostThread({ uri })
 			.then((data) => {
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
 				const thread = (data as any).thread;
 				if (thread?.$type === 'app.bsky.feed.defs#threadViewPost') {
 					threadStore.set(uri, thread).catch(() => {});
+					_hydrateThreadPosts(thread);
 				}
 			})
 			.catch(() => {});
 	}).catch(() => {});
+}
+
+// Walk a thread tree and upsert all posts into postMap
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _hydrateThreadPosts(thread: any) {
+	if (thread?.post) {
+		postMap.upsert(thread.post.uri, thread.post);
+	}
+	if (thread?.replies) {
+		for (const reply of thread.replies) {
+			if (reply?.$type === 'app.bsky.feed.defs#threadViewPost') {
+				_hydrateThreadPosts(reply);
+			}
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -96,8 +150,7 @@ export async function setCachedMessages(convoId: string, messages: any[]) {
 // Feed: reactive state for the main timeline
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _feedPosts = $state<any[]>([]);
+let _feedPosts = $state<FeedItem[]>([]);
 let _feedCursor = $state<string | null>(null);
 let _feedLoaded = $state(false);
 let _feedScrollY = $state(0);
@@ -113,8 +166,7 @@ export const feedCache = {
 	set scrollY(v) { _feedScrollY = v; }
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _pendingFeedPosts = $state<any[]>([]);
+let _pendingFeedPosts = $state<FeedItem[]>([]);
 let _pendingFeedCursor = $state<string | null>(null);
 let _hasPendingFeed = $state(false);
 let _feedPollInterval: ReturnType<typeof setInterval> | null = null;
@@ -133,10 +185,9 @@ async function pollFeed() {
 	console.log('[poll] feed');
 	try {
 		const result = await loadFeed({ feedUri: _feedUri });
-		_pendingFeedPosts = JSON.parse(JSON.stringify(result.posts));
+		_pendingFeedPosts = ingestFeedPosts(result.posts);
 		_pendingFeedCursor = result.cursor;
 		_hasPendingFeed = true;
-		cachePosts(_pendingFeedPosts);
 	} catch {
 		// silent
 	}
@@ -151,7 +202,7 @@ export function applyPendingFeed() {
 	_hasPendingFeed = false;
 	saveState('feed', { posts: _feedPosts, cursor: _feedCursor });
 	for (const fp of _feedPosts) {
-		if (fp.post) prefetchThread(fp.post.uri);
+		prefetchThread(fp.uri);
 	}
 }
 
@@ -354,6 +405,15 @@ export async function hydrateFromDb() {
 			_feedPosts = feedState.posts;
 			_feedCursor = feedState.cursor ?? null;
 			_feedLoaded = true;
+			// Hydrate postMap from Dexie for each feed item
+			for (const item of _feedPosts) {
+				const uri = item.uri ?? (item as any).post?.uri; // handle both old and new format // eslint-disable-line @typescript-eslint/no-explicit-any
+				if (uri) {
+					postStore.get(uri).then((post) => {
+						if (post) postMap.upsert(uri, post);
+					}).catch(() => {});
+				}
+			}
 		}
 
 		if (convosState?.accepted?.length || convosState?.requests?.length) {

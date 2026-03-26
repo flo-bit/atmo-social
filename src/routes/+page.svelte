@@ -5,10 +5,10 @@
 	import { blueskyPostToPostData } from '$lib/components';
 	import { Post } from '$lib/components';
 	import { Loader2 } from '@lucide/svelte';
-	import { loadFeed, likePost, unlikePost } from '$lib/atproto/server/feed.remote';
-	import { cachePosts, prefetchThread, feedCache, prefetchNotifications, setFeedUri } from '$lib/cache.svelte';
+	import { loadFeed } from '$lib/atproto/server/feed.remote';
+	import { prefetchThread, feedCache, prefetchNotifications, setFeedUri, ingestFeedPosts, postMap } from '$lib/cache.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
-	import { bookmarks } from '$lib/bookmarks.svelte';
+	import { isLiked, isBookmarked, getLikeCount, toggleLike, toggleBookmark } from '$lib/actions.svelte';
 
 	const LOGGED_IN_FEED = 'at://did:plc:3guzzweuqraryl3rdkimjamk/app.bsky.feed.generator/for-you';
 	const PUBLIC_FEED = 'at://did:plc:w4xbfzo7kqfes5zb7r6qv3rw/app.bsky.feed.generator/blacksky-trend';
@@ -20,18 +20,11 @@
 	let loading = $derived(!feedCache.loaded);
 	let loadingMore = $state(false);
 
-	function cacheAndPrefetch(posts: any[]) { // eslint-disable-line @typescript-eslint/no-explicit-any
-		cachePosts(posts);
-		for (const fp of posts) {
-			if (fp.post) prefetchThread(fp.post.uri);
-		}
-	}
-
 	async function loadInitial() {
 		try {
 			const result = await loadFeed({ feedUri });
-			feedCache.posts = JSON.parse(JSON.stringify(result.posts));
-			cacheAndPrefetch(feedCache.posts);
+			feedCache.posts = ingestFeedPosts(result.posts);
+			for (const item of feedCache.posts) prefetchThread(item.uri);
 			feedCache.cursor = result.cursor;
 			feedCache.loaded = true;
 		} catch (e) {
@@ -68,54 +61,14 @@
 				feedUri,
 				cursor: feedCache.cursor
 			});
-			const newPosts = JSON.parse(JSON.stringify(result.posts));
-			cacheAndPrefetch(newPosts);
-			feedCache.posts = [...feedCache.posts, ...newPosts];
+			const newItems = ingestFeedPosts(result.posts);
+			for (const item of newItems) prefetchThread(item.uri);
+			feedCache.posts = [...feedCache.posts, ...newItems];
 			feedCache.cursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load more:', e);
 		} finally {
 			loadingMore = false;
-		}
-	}
-
-	// Track like state: postUri -> likeRecordUri (or null if not liked)
-	let likeState = $state<Record<string, string | null>>({});
-	// Track like count adjustments: postUri -> delta (+1 or -1)
-	let likeCountDelta = $state<Record<string, number>>({});
-
-	function isLiked(postUri: string, viewerLike?: string): boolean {
-		if (postUri in likeState) return likeState[postUri] !== null;
-		return !!viewerLike;
-	}
-
-	function getLikeCount(postUri: string, originalCount: number): number {
-		return originalCount + (likeCountDelta[postUri] ?? 0);
-	}
-
-	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
-		const currentlyLiked = isLiked(postUri, viewerLike);
-		if (currentlyLiked) {
-			const likeUri = likeState[postUri] ?? viewerLike;
-			if (!likeUri) return;
-			likeState[postUri] = null;
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			try {
-				await unlikePost({ likeUri });
-			} catch {
-				likeState[postUri] = likeUri;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			}
-		} else {
-			likeState[postUri] = 'pending';
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			try {
-				const result = await likePost({ uri: postUri, cid: postCid });
-				likeState[postUri] = result.uri;
-			} catch {
-				likeState[postUri] = null;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			}
 		}
 	}
 
@@ -147,21 +100,22 @@
 					</div>
 				{:else}
 					<div>
-						{#each feedCache.posts as feedPost, i (feedPost.post?.uri ? `${feedPost.post.uri}-${i}` : i)}
-							{#if feedPost.post}
-								{@const { postData, embeds } = blueskyPostToPostData(feedPost.post, 'https://bsky.app', feedPost.reason, feedPost.reply)}
+						{#each feedCache.posts as feedItem, i (feedItem.uri + '-' + i)}
+							{@const post = postMap.get(feedItem.uri)}
+							{#if post}
+								{@const { postData, embeds } = blueskyPostToPostData(post, 'https://bsky.app', feedItem.reason, feedItem.reply)}
 								{@const postHref = (() => {
 									// eslint-disable-next-line @typescript-eslint/no-explicit-any
-									const record = feedPost.post.record as any;
+									const record = post.record as any;
 									const isReply = !!record?.reply?.root;
 									if (isReply) {
 										const rootUri = record.reply.root.uri as string;
 										const [, , rootDid, , rootRkey] = rootUri.split('/');
-										const clickedRkey = feedPost.post.uri.split('/').pop();
-										return `/profile/${rootDid}/post/${rootRkey}?highlight=${feedPost.post.author.handle}/${clickedRkey}`;
+										const clickedRkey = post.uri.split('/').pop();
+										return `/profile/${rootDid}/post/${rootRkey}?highlight=${post.author.handle}/${clickedRkey}`;
 									} else {
-										const rkey = feedPost.post.uri.split('/').pop();
-										return `/profile/${feedPost.post.author.handle}/post/${rkey}`;
+										const rkey = post.uri.split('/').pop();
+										return `/profile/${post.author.handle}/post/${rkey}`;
 									}
 								})()}
 								<div
@@ -184,13 +138,13 @@
 														count: postData.repostCount
 													},
 													like: {
-														count: getLikeCount(feedPost.post.uri, postData.likeCount ?? 0),
-														active: isLiked(feedPost.post.uri, feedPost.post.viewer?.like),
-														onclick: () => handleLike(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.like)
+														count: getLikeCount(post.uri),
+														active: isLiked(post.uri),
+														onclick: () => toggleLike(post.uri, post.cid)
 													},
 													bookmark: {
-														active: bookmarks.isBookmarked(feedPost.post.uri, feedPost.post.viewer?.bookmarked),
-														onclick: () => bookmarks.toggle(feedPost.post.uri, feedPost.post.cid, feedPost.post.viewer?.bookmarked)
+														active: isBookmarked(post.uri),
+														onclick: () => toggleBookmark(post.uri, post.cid)
 													}
 												}
 											: {

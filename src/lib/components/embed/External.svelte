@@ -30,7 +30,7 @@
 		<div>{domain}</div>
 	</div>
 	<h3
-		class="dark:text-base-50 text-base-900 group-hover:text-accent-600 dark:group-hover:text-accent-400 mt-1 text-lg/6 font-semibold transition-colors duration-200"
+		class="dark:text-base-50 text-base-900 group-hover:text-accent-600 dark:group-hover:text-accent-400 mt-1 line-clamp-2 text-lg/6 font-semibold transition-colors duration-200"
 	>
 		<a href={data.external.href} target="_blank" rel="noopener noreferrer nofollow">
 			<span class="absolute inset-0"></span>

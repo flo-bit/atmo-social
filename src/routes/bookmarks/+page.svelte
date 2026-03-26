@@ -5,54 +5,15 @@
 	import { blueskyPostToPostData } from '$lib/components';
 	import { Post } from '$lib/components';
 	import { ArrowLeft, Loader2 } from '@lucide/svelte';
-	import { likePost, unlikePost, getBookmarks } from '$lib/atproto/server/feed.remote';
-	import { cachePosts, prefetchThread } from '$lib/cache.svelte';
+	import { getBookmarks } from '$lib/atproto/server/feed.remote';
+	import { ingestPosts, postMap, prefetchThread } from '$lib/cache.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
-	import { bookmarks } from '$lib/bookmarks.svelte';
+	import { isLiked, isBookmarked, getLikeCount, toggleLike, toggleBookmark } from '$lib/actions.svelte';
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let posts = $state<any[]>([]);
+	let postUris = $state<string[]>([]);
 	let cursor = $state<string | null>(null);
 	let loading = $state(true);
 	let loadingMore = $state(false);
-
-	let likeState = $state<Record<string, string | null>>({});
-	let likeCountDelta = $state<Record<string, number>>({});
-
-	function isLiked(postUri: string, viewerLike?: string): boolean {
-		if (postUri in likeState) return likeState[postUri] !== null;
-		return !!viewerLike;
-	}
-
-	function getLikeCount(postUri: string, originalCount: number): number {
-		return originalCount + (likeCountDelta[postUri] ?? 0);
-	}
-
-	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
-		const currentlyLiked = isLiked(postUri, viewerLike);
-		if (currentlyLiked) {
-			const likeUri = likeState[postUri] ?? viewerLike;
-			if (!likeUri) return;
-			likeState[postUri] = null;
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			try {
-				await unlikePost({ likeUri });
-			} catch {
-				likeState[postUri] = likeUri;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			}
-		} else {
-			likeState[postUri] = 'pending';
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			try {
-				const result = await likePost({ uri: postUri, cid: postCid });
-				likeState[postUri] = result.uri;
-			} catch {
-				likeState[postUri] = null;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			}
-		}
-	}
 
 	onMount(async () => {
 		if (!user.did) {
@@ -61,12 +22,8 @@
 		}
 		try {
 			const result = await getBookmarks({});
-			posts = JSON.parse(JSON.stringify(result.posts));
-			cachePosts(posts);
-			for (const p of posts) {
-				const post = p.post ?? p;
-				if (post?.uri) prefetchThread(post.uri);
-			}
+			postUris = ingestPosts(result.posts);
+			for (const uri of postUris) prefetchThread(uri);
 			cursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load bookmarks:', e);
@@ -80,13 +37,9 @@
 		loadingMore = true;
 		try {
 			const result = await getBookmarks({ cursor });
-			const newPosts = JSON.parse(JSON.stringify(result.posts));
-			cachePosts(newPosts);
-			for (const p of newPosts) {
-				const post = p.post ?? p;
-				if (post?.uri) prefetchThread(post.uri);
-			}
-			posts = [...posts, ...newPosts];
+			const newUris = ingestPosts(result.posts);
+			for (const uri of newUris) prefetchThread(uri);
+			postUris = [...postUris, ...newUris];
 			cursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load more bookmarks:', e);
@@ -107,12 +60,6 @@
 	onDestroy(() => {
 		if (typeof window !== 'undefined') window.removeEventListener('scroll', handleScroll);
 	});
-
-	// Posts are already normalized to PostView by the server command
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function getPostView(item: any) {
-		return item;
-	}
 </script>
 
 <div class="flex h-dvh flex-col">
@@ -131,17 +78,17 @@
 			<div class="flex items-center justify-center py-12">
 				<Loader2 class="text-base-400 animate-spin" size={28} />
 			</div>
-		{:else if posts.length === 0}
+		{:else if postUris.length === 0}
 			<div class="flex items-center justify-center py-12">
 				<p class="text-base-400 text-sm">No bookmarks yet</p>
 			</div>
 		{:else}
 			<div>
-				{#each posts as item, i (getPostView(item)?.uri ? `${getPostView(item).uri}-${i}` : i)}
-					{@const postView = getPostView(item)}
-					{#if postView?.uri && postView?.author}
-						{@const { postData, embeds } = blueskyPostToPostData(postView, 'https://bsky.app')}
-						{@const postHref = `/profile/${postView.author.handle}/post/${postView.uri.split('/').pop()}`}
+				{#each postUris as uri, i (uri + '-' + i)}
+					{@const post = postMap.get(uri)}
+					{#if post?.uri && post?.author}
+						{@const { postData, embeds } = blueskyPostToPostData(post, 'https://bsky.app')}
+						{@const postHref = `/profile/${post.author.handle}/post/${post.uri.split('/').pop()}`}
 						<div class="-mx-2 px-6 pt-3 pb-2 sm:px-2 rounded-xl hover:bg-base-100/50 dark:hover:bg-base-800/30 transition-colors">
 							<Post
 								compact={true}
@@ -155,13 +102,13 @@
 											reply: { count: postData.replyCount },
 											repost: { count: postData.repostCount },
 											like: {
-												count: getLikeCount(postView.uri, postData.likeCount ?? 0),
-												active: isLiked(postView.uri, postView.viewer?.like),
-												onclick: () => handleLike(postView.uri, postView.cid, postView.viewer?.like)
+												count: getLikeCount(post.uri),
+												active: isLiked(post.uri),
+												onclick: () => toggleLike(post.uri, post.cid)
 											},
 											bookmark: {
-												active: bookmarks.isBookmarked(postView.uri, postView.viewer?.bookmarked),
-												onclick: () => bookmarks.toggle(postView.uri, postView.cid, postView.viewer?.bookmarked)
+												active: isBookmarked(post.uri),
+												onclick: () => toggleBookmark(post.uri, post.cid)
 											}
 										}
 									: {
@@ -171,7 +118,7 @@
 										}}
 							/>
 						</div>
-						{#if i < posts.length - 1}
+						{#if i < postUris.length - 1}
 							<hr class="border-base-200 dark:border-base-800 mx-4 sm:mx-0" />
 						{/if}
 					{/if}
@@ -184,7 +131,7 @@
 				</div>
 			{/if}
 
-			{#if !cursor && posts.length > 0}
+			{#if !cursor && postUris.length > 0}
 				<p class="text-base-400 py-6 text-center text-sm">You've reached the end</p>
 			{/if}
 		{/if}

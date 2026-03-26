@@ -17,6 +17,7 @@ svelte bsky client, wip
 - make links in profile clickable
 - show website + pronouns
 - make editable
+- show germ button
 
 ## general
 
@@ -30,7 +31,6 @@ svelte bsky client, wip
 - fix handles (space between avatar and handle sometimes)
 - make everything tighter
 - add action to reply button and repost/quote button
-- limit title in external embed to 2 lines 
 
 ## notifications
 

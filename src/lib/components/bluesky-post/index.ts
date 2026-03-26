@@ -66,17 +66,17 @@ const renderSegment = (
 	}
 
 	const feature = features[0] as Feature;
-	const targetAttr = target ? ` target="${target}"` : '';
 
-	const createLink = (href: string, text: string) => {
-		return `<a${targetAttr} rel="noopener noreferrer nofollow" href="${encodeURI(href)}">${text}</a>`;
+	const createLink = (href: string, text: string, external = false) => {
+		const attrs = external ? ' target="_blank" rel="noopener noreferrer nofollow"' : ' rel="noopener noreferrer nofollow"';
+		return `<a${attrs} href="${encodeURI(href)}">${text}</a>`;
 	};
 
 	switch (feature.$type) {
 		case 'app.bsky.richtext.facet#mention':
 			return createLink(hrefs.profile(feature.did, feature.did), escaped);
 		case 'app.bsky.richtext.facet#link':
-			return createLink(feature.uri, escaped);
+			return createLink(feature.uri, escaped, true);
 		case 'app.bsky.richtext.facet#tag':
 			return createLink(hrefs.hashtag(feature.tag), escaped);
 		default:

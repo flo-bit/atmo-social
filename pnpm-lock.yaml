@@ -14,6 +14,9 @@ importers:
       '@atcute/jetstream':
         specifier: ^1.1.2
         version: 1.1.2
+      '@foxui/colors':
+        specifier: ^0.8.2
+        version: 0.8.2(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(tailwindcss@4.2.2)
       '@foxui/core':
         specifier: ^0.8.2
         version: 0.8.2(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(tailwindcss@4.2.2)
@@ -635,6 +638,12 @@ packages:
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==, tarball: https://registry.npmjs.org/@floating-ui/utils/-/utils-0.2.11.tgz}
 
+  '@foxui/colors@0.8.2':
+    resolution: {integrity: sha512-qbIIYkgi94untqRyDZe1JYW7NJkz5cOFSmJv/IlxqK1cZ6YM8JnLjdnwwusqPDVZtAOxuCLbSQXSvUQ34fnwIQ==, tarball: https://registry.npmjs.org/@foxui/colors/-/colors-0.8.2.tgz}
+    peerDependencies:
+      svelte: '>=5'
+      tailwindcss: '>=3'
+
   '@foxui/core@0.8.2':
     resolution: {integrity: sha512-cVfFCQX4SfL7mezfQHAHln8M+ZiEZlwa4lIXMFUATLuhl4YCcwv7IvvtU+hMvq2ky+vsCEEry1XvXOLdSe6zAA==, tarball: https://registry.npmjs.org/@foxui/core/-/core-0.8.2.tgz}
     peerDependencies:
@@ -1104,6 +1113,9 @@ packages:
     resolution: {integrity: sha512-mEiF5HO1QqCLXoNEfXVA1Tzo+cYsrqV7w9Juj2wdUFyW07JRenqMG225MvPwr3ZD9N1bFQj46X7r33iHxLUW0w==, tarball: https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.2.2.tgz}
     peerDependencies:
       vite: ^5.2.0 || ^6 || ^7 || ^8
+
+  '@texel/color@1.1.11':
+    resolution: {integrity: sha512-/3kKgfBqzrRfLl4RsEccx+Yfj1kVL6Bh6DejVWZ+DPg/jJdcfdYZ5fpD1nXFwWd8OQNATjz+WqsfQfUynSsgRg==, tarball: https://registry.npmjs.org/@texel/color/-/color-1.1.11.tgz}
 
   '@tiptap/core@3.20.5':
     resolution: {integrity: sha512-Pkjd41UJ4F6Z8cPV+gEvqnt1VhY2g66xMjbpxREs0ECA5jRezCNKSZcc2pueQRTMtmn1SaSzGM9U/ifhVlVYOA==, tarball: https://registry.npmjs.org/@tiptap/core/-/core-3.20.5.tgz}
@@ -2819,6 +2831,21 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
+  '@foxui/colors@0.8.2(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(tailwindcss@4.2.2)':
+    dependencies:
+      '@foxui/core': 0.8.2(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(tailwindcss@4.2.2)
+      '@texel/color': 1.1.11
+      '@use-gesture/vanilla': 10.3.1
+      bits-ui: 2.16.3(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)
+      svelte: 5.55.0
+      tailwindcss: 4.2.2
+    transitivePeerDependencies:
+      - '@internationalized/date'
+      - '@sveltejs/kit'
+      - react
+      - react-dom
+      - vue
+
   '@foxui/core@0.8.2(@internationalized/date@3.10.1)(@sveltejs/kit@2.55.0(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.55.0)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(typescript@6.0.2)(vite@8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)))(svelte@5.55.0)(tailwindcss@4.2.2)':
     dependencies:
       '@number-flow/svelte': 0.4.0(svelte@5.55.0)
@@ -3264,6 +3291,8 @@ snapshots:
       '@tailwindcss/oxide': 4.2.2
       tailwindcss: 4.2.2
       vite: 8.0.2(@types/node@25.0.10)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)
+
+  '@texel/color@1.1.11': {}
 
   '@tiptap/core@3.20.5(@tiptap/pm@3.20.5)':
     dependencies:

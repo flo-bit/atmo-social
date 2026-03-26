@@ -1,8 +1,8 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount, onDestroy } from 'svelte';
-	import { Head, ThemeToggle, Avatar, Button } from '@foxui/core';
-	import { House, MessageCircle, Bell, Search, Bookmark } from '@lucide/svelte';
+	import { Head, Avatar, Button, ThemeToggle } from '@foxui/core';
+	import { House, MessageCircle, Bell, Search, Bookmark, Settings } from '@lucide/svelte';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/atproto/auth.svelte';
 	import { notificationsCache, startUnreadPoll, stopUnreadPoll, chatUnreadCount, startChatPoll, stopChatPoll, applyPendingFeed, startFeedPoll, stopFeedPoll, hydrateFromDb } from '$lib/cache.svelte';
@@ -56,7 +56,10 @@
 			<Bookmark size={20} />
 		</Button>
 	{/if}
-	<ThemeToggle class="mt-auto" />
+	<Button href="/settings" onmousedown={(e: MouseEvent) => { e.preventDefault(); goto('/settings'); }} variant="ghost" size="icon" class="mt-auto">
+		<Settings size={20} />
+	</Button>
+	<ThemeToggle />
 	{#if user.did}
 		{@const profileHref = `/profile/${user.profile?.handle ?? user.did}`}
 		<Button href={profileHref} onmousedown={(e: MouseEvent) => { e.preventDefault(); goto(profileHref); }} variant="ghost" size="icon" class="mb-2">
@@ -69,7 +72,7 @@
 	{/if}
 </Sidebar>
 
-<div class="lg:ml-20">
+<div class="overflow-x-hidden lg:ml-20">
 	{@render children()}
 </div>
 

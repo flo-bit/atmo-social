@@ -7,67 +7,26 @@
 	import { blueskyPostToPostData } from '$lib/components';
 	import { Post } from '$lib/components';
 	import { Hash, Loader2 } from '@lucide/svelte';
-	import { searchPosts, likePost, unlikePost } from '$lib/atproto/server/feed.remote';
-	import { cachePosts, prefetchThread } from '$lib/cache.svelte';
+	import { searchPosts } from '$lib/atproto/server/feed.remote';
+	import { prefetchThread, ingestPosts, postMap } from '$lib/cache.svelte';
 	import { wireEmbedClicks } from '$lib/components/embed';
+	import { isLiked, isBookmarked, getLikeCount, toggleLike, toggleBookmark } from '$lib/actions.svelte';
 
 	let tag = $derived(page.params.tag);
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let posts = $state<any[]>([]);
+	let postUris = $state<string[]>([]);
 	let cursor = $state<string | null>(null);
 	let loading = $state(true);
 	let loadingMore = $state(false);
 
-	let likeState = $state<Record<string, string | null>>({});
-	let likeCountDelta = $state<Record<string, number>>({});
-
-	function isLiked(postUri: string, viewerLike?: string): boolean {
-		if (postUri in likeState) return likeState[postUri] !== null;
-		return !!viewerLike;
-	}
-
-	function getLikeCount(postUri: string, originalCount: number): number {
-		return originalCount + (likeCountDelta[postUri] ?? 0);
-	}
-
-	async function handleLike(postUri: string, postCid: string, viewerLike?: string) {
-		const currentlyLiked = isLiked(postUri, viewerLike);
-		if (currentlyLiked) {
-			const likeUri = likeState[postUri] ?? viewerLike;
-			if (!likeUri) return;
-			likeState[postUri] = null;
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			try {
-				await unlikePost({ likeUri });
-			} catch {
-				likeState[postUri] = likeUri;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			}
-		} else {
-			likeState[postUri] = 'pending';
-			likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) + 1;
-			try {
-				const result = await likePost({ uri: postUri, cid: postCid });
-				likeState[postUri] = result.uri;
-			} catch {
-				likeState[postUri] = null;
-				likeCountDelta[postUri] = (likeCountDelta[postUri] ?? 0) - 1;
-			}
-		}
-	}
-
 	async function loadTag(t: string) {
 		loading = true;
-		posts = [];
+		postUris = [];
 		cursor = null;
-		likeState = {};
-		likeCountDelta = {};
 		try {
 			const result = await searchPosts({ q: `#${t}` });
-			posts = result.posts;
-			cachePosts(posts.map((p: any) => ({ post: p }))); // eslint-disable-line @typescript-eslint/no-explicit-any
-			for (const p of posts) prefetchThread(p.uri);
+			postUris = ingestPosts(result.posts);
+			for (const uri of postUris) prefetchThread(uri);
 			cursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load hashtag:', e);
@@ -81,9 +40,9 @@
 		loadingMore = true;
 		try {
 			const result = await searchPosts({ q: `#${tag}`, cursor });
-			cachePosts(result.posts.map((p: any) => ({ post: p }))); // eslint-disable-line @typescript-eslint/no-explicit-any
-			for (const p of result.posts) prefetchThread(p.uri);
-			posts = [...posts, ...result.posts];
+			const newUris = ingestPosts(result.posts);
+			for (const uri of newUris) prefetchThread(uri);
+			postUris = [...postUris, ...newUris];
 			cursor = result.cursor;
 		} catch (e) {
 			console.error('Failed to load more:', e);
@@ -123,44 +82,51 @@
 			<div class="flex items-center justify-center py-12">
 				<Loader2 class="text-base-400 animate-spin" size={28} />
 			</div>
-		{:else if posts.length === 0}
+		{:else if postUris.length === 0}
 			<div class="flex flex-col items-center justify-center py-20">
 				<Hash class="text-base-300 dark:text-base-600 mb-3" size={40} />
 				<p class="text-base-400 text-sm">No posts with #{tag}</p>
 			</div>
 		{:else}
 			<div>
-				{#each posts as post, i (post.uri ? `${post.uri}-${i}` : i)}
-					{@const { postData, embeds } = blueskyPostToPostData(post)}
-					{@const rkey = post.uri.split('/').pop()}
-					{@const postHref = `/profile/${post.author.handle}/post/${rkey}`}
-					<div class="-mx-2 rounded-xl px-6 pt-3 pb-2 transition-colors hover:bg-base-100/50 sm:px-2 dark:hover:bg-base-800/30">
-						<Post
-							compact={true}
-							data={postData}
-							embeds={wireEmbedClicks(embeds, (handle, rk) => goto(`/profile/${handle}/post/${rk}`), (handle) => goto(`/profile/${handle}`))}
-							href={postHref}
-							onclickhandle={(handle) => goto(`/profile/${handle}`)}
-							handleHref={(handle) => `/profile/${handle}`}
-							actions={user.did
-								? {
-										reply: { count: postData.replyCount, href: postHref + '#replies' },
-										repost: { count: postData.repostCount },
-										like: {
-											count: getLikeCount(post.uri, postData.likeCount ?? 0),
-											active: isLiked(post.uri, post.viewer?.like),
-											onclick: () => handleLike(post.uri, post.cid, post.viewer?.like)
+				{#each postUris as uri, i (uri + '-' + i)}
+					{@const post = postMap.get(uri)}
+					{#if post}
+						{@const { postData, embeds } = blueskyPostToPostData(post)}
+						{@const rkey = post.uri.split('/').pop()}
+						{@const postHref = `/profile/${post.author.handle}/post/${rkey}`}
+						<div class="-mx-2 rounded-xl px-6 pt-3 pb-2 transition-colors hover:bg-base-100/50 sm:px-2 dark:hover:bg-base-800/30">
+							<Post
+								compact={true}
+								data={postData}
+								embeds={wireEmbedClicks(embeds, (handle, rk) => goto(`/profile/${handle}/post/${rk}`), (handle) => goto(`/profile/${handle}`))}
+								href={postHref}
+								onclickhandle={(handle) => goto(`/profile/${handle}`)}
+								handleHref={(handle) => `/profile/${handle}`}
+								actions={user.did
+									? {
+											reply: { count: postData.replyCount, href: postHref + '#replies' },
+											repost: { count: postData.repostCount },
+											like: {
+												count: getLikeCount(post.uri),
+												active: isLiked(post.uri),
+												onclick: () => toggleLike(post.uri, post.cid)
+											},
+											bookmark: {
+												active: isBookmarked(post.uri),
+												onclick: () => toggleBookmark(post.uri, post.cid)
+											}
 										}
-									}
-								: {
-										reply: { count: postData.replyCount, href: postHref + '#replies' },
-										repost: { count: postData.repostCount },
-										like: { count: postData.likeCount }
-									}}
-						/>
-					</div>
-					{#if i < posts.length - 1}
-						<hr class="border-base-200 dark:border-base-800 mx-4 sm:mx-0" />
+									: {
+											reply: { count: postData.replyCount, href: postHref + '#replies' },
+											repost: { count: postData.repostCount },
+											like: { count: postData.likeCount }
+										}}
+							/>
+						</div>
+						{#if i < postUris.length - 1}
+							<hr class="border-base-200 dark:border-base-800 mx-4 sm:mx-0" />
+						{/if}
 					{/if}
 				{/each}
 			</div>
@@ -171,7 +137,7 @@
 				</div>
 			{/if}
 
-			{#if !cursor && posts.length > 0}
+			{#if !cursor && postUris.length > 0}
 				<p class="text-base-400 py-6 text-center text-sm">No more results</p>
 			{/if}
 
