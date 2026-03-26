@@ -17,11 +17,11 @@
 	"kv_namespaces": [
 		{
 			"binding": "OAUTH_SESSIONS",
-			"id": "c44fc97274b84f5a97a8399b1977ad0d"
+			"id": "1658de56bff048fca374fe2bb916dbde"
 		},
 		{
 			"binding": "OAUTH_STATES",
-			"id": "115d8089d9ca4592a3a5e4a7d9146610"
+			"id": "8cff96d0d78f4966a09b6b8833cab54e"
 		}
 	]
 }

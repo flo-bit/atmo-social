@@ -1,13 +1,11 @@
 import { error } from '@sveltejs/kit';
 import { command, getRequestEvent } from '$app/server';
 import * as v from 'valibot';
-import { collections } from '../settings';
 
 // Validate collection format and check against allowed list from settings
 const collectionSchema = v.pipe(
 	v.string(),
-	v.regex(/^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*){2,}$/),
-	v.check((c) => collections.includes(c as (typeof collections)[number]), 'Collection not in allowed list')
+	v.regex(/^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*){2,}$/)
 );
 
 // AT Protocol rkey: TID, 'self', or other valid record keys (alphanumeric, dash, underscore, dot)
