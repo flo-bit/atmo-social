@@ -7,5 +7,5 @@
 </script>
 
 {#if config}
-	<IframeEmbed {config} url={data.external.href} />
+	<IframeEmbed {config} url={data.external.href} thumbnail={data.external.thumb} />
 {/if}

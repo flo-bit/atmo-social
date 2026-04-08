@@ -19,6 +19,10 @@ export interface EmbedAppConfig {
 	allowedCollections: string[];
 	/** Aspect ratio for the embed to prevent layout shift */
 	aspectRatio: { width: number; height: number };
+	/** If true, show a click-to-load overlay before loading the iframe */
+	requireClick?: boolean;
+	/** Label for the click-to-load overlay */
+	label?: string;
 }
 
 export const embedApps: EmbedAppConfig[] = [
@@ -36,6 +40,21 @@ export const embedApps: EmbedAppConfig[] = [
 			'community.lexicon.calendar.rsvp'
 		],
 		aspectRatio: { width: 2, height: 1 }
+	},
+	{
+		domain: 'stream.place',
+		match: (href) => /^https?:\/\/(www\.)?stream\.place\/[^/]+\/?$/.test(href),
+		embedUrl: (href) => {
+			const url = new URL(href);
+			const actor = url.pathname.replace(/^\//, '').replace(/\/$/, '');
+			url.pathname = `/embed/${actor}`;
+			url.search = '';
+			return url.toString();
+		},
+		allowedCollections: [],
+		aspectRatio: { width: 16, height: 9 },
+		requireClick: true,
+		label: 'Load stream'
 	}
 ];
 

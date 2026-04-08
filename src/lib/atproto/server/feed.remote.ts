@@ -234,7 +234,10 @@ export const getAuthorFeed = command(
 export const searchPosts = command(
 	v.object({
 		q: v.string(),
-		cursor: v.optional(v.string())
+		cursor: v.optional(v.string()),
+		author: v.optional(v.string()),
+		sort: v.optional(v.picklist(['top', 'latest'])),
+		since: v.optional(v.string())
 	}),
 	async (input) => {
 		const { locals } = getRequestEvent();
@@ -247,7 +250,10 @@ export const searchPosts = command(
 			params: {
 				q: input.q,
 				limit: 25,
-				...(input.cursor ? { cursor: input.cursor } : {})
+				...(input.cursor ? { cursor: input.cursor } : {}),
+				...(input.author ? { author: input.author as `did:${string}:${string}` } : {}),
+				...(input.sort ? { sort: input.sort } : {}),
+				...(input.since ? { since: input.since } : {})
 			}
 		});
 		if (!res.ok) error(res.status, 'Failed to search posts');
